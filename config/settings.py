@@ -31,7 +31,6 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    'unfold',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -134,14 +133,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
-
-UNFOLD = {
-    "SITE_TITLE": "WAN-Manager Admin",
-    "SITE_HEADER": "WAN-Manager",
-    "SITE_URL": "/",  # Link im Logo oben links
-    "SHOW_HISTORY": True,
-    "SHOW_THEME_TOGGLE": True,  # Dark / Light Mode
-}
 
 STATICFILES_DIRS = []  # optional, wenn du eigene statics hast
 STATIC_ROOT = BASE_DIR / "staticfiles"
