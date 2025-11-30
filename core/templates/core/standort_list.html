@@ -1,0 +1,75 @@
+{% extends "core/base.html" %}
+
+{% block title %}Standorte{% endblock %}
+
+{% block content %}
+<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+    <h1 class="text-2xl font-semibold">Standorte</h1>
+
+    <div class="flex items-center gap-3">
+        <form method="get" class="flex items-center gap-2">
+            <input type="text" name="q"
+                   class="border border-gray-300 rounded px-3 py-1 text-sm"
+                   placeholder="Suche nach Name"
+                   value="{{ search|default:'' }}">
+            <button type="submit"
+                    class="bg-brand text-white px-4 py-1.5 rounded text-sm hover:bg-brand-dark">
+                Suchen
+            </button>
+        </form>
+
+        {% if can_create_standort %}
+            <a href="{% url 'core:standort_create' %}"
+               class="bg-emerald-600 text-white px-4 py-1.5 rounded text-sm hover:bg-emerald-700">
+                + Neuer Standort
+            </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Standort</th>
+                <th class="px-4 py-3 text-left">Verwaltung</th>
+                <th class="px-4 py-3 text-left">Ort</th>
+                <th class="px-4 py-3 text-left">WAN-Leitungen</th>
+                <th class="px-4 py-3 text-left">Aktiv</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for s in standorte %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:standort_detail' s.id %}"
+                           class="text-brand hover:underline">
+                            {{ s.name }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">{{ s.verwaltung.name }}</td>
+                    <td class="px-4 py-2">{{ s.adresse_plz }} {{ s.adresse_ort }}</td>
+                    <td class="px-4 py-2">{{ s.leitung_count }}</td>
+                    <td class="px-4 py-2">
+                        {% if s.aktiv %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-800">
+                                Ja
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-800">
+                                Nein
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-4 text-center text-gray-500">
+                        Keine Standorte gefunden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

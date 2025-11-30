@@ -1,0 +1,201 @@
+{% extends "core/base.html" %}
+
+{% block title %}Verwaltung {{ verwaltung.name }}{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-semibold">{{ verwaltung.name }}</h1>
+
+    {% if can_edit %}
+        <a href="{% url 'core:verwaltung_update' verwaltung.id %}"
+           class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+            Bearbeiten
+        </a>
+    {% endif %}
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Stammdaten</h2>
+        <dl class="text-sm space-y-2">
+            <div>
+                <dt class="font-semibold text-gray-600">Name</dt>
+                <dd>{{ verwaltung.name }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Kürzel</dt>
+                <dd>{{ verwaltung.kuerzel|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Typ</dt>
+                <dd>{{ verwaltung.get_typ_display|default:"-" }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Kennzahlen</h2>
+        <dl class="text-sm space-y-2">
+            <div>
+                <dt class="font-semibold text-gray-600">Anzahl Standorte</dt>
+                <dd>{{ standorte|length }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Anzahl Verträge</dt>
+                <dd>{{ vertraege|length }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Anzahl WAN-Leitungen</dt>
+                <dd>{{ leitungen|length }}</dd>
+            </div>
+        </dl>
+    </div>
+</div>
+
+<h2 class="text-xl font-semibold mb-3">Standorte</h2>
+<div class="bg-white shadow rounded-lg overflow-hidden mb-8">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Name</th>
+                <th class="px-4 py-3 text-left">Ort</th>
+                <th class="px-4 py-3 text-left">WAN-Leitungen</th>
+                <th class="px-4 py-3 text-left">Aktiv</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for s in standorte %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:standort_detail' s.id %}"
+                           class="text-brand hover:underline">
+                            {{ s.name }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">{{ s.adresse_plz }} {{ s.adresse_ort }}</td>
+                    <td class="px-4 py-2">{{ s.leitung_count }}</td>
+                    <td class="px-4 py-2">
+                        {% if s.aktiv %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-800">
+                                Ja
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-800">
+                                Nein
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="4" class="px-4 py-4 text-center text-gray-500">
+                        Keine Standorte vorhanden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2 class="text-xl font-semibold mb-3">Verträge</h2>
+<div class="bg-white shadow rounded-lg overflow-hidden mb-8">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Provider</th>
+                <th class="px-4 py-3 text-left">Vertragsnummer</th>
+                <th class="px-4 py-3 text-left">Laufzeit</th>
+                <th class="px-4 py-3 text-left">Monatliche Kosten</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for v in vertraege %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">{{ v.provider }}</td>
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:vertrag_detail' v.id %}"
+                           class="text-brand hover:underline">
+                            {{ v.vertragsnummer }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">
+                        {% if v.laufzeit_von or v.laufzeit_bis %}
+                            {{ v.laufzeit_von|date:"d.m.Y"|default:"?" }}
+                            –
+                            {{ v.laufzeit_bis|date:"d.m.Y"|default:"?" }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2">
+                        {% if v.kosten_monat_netto %}
+                            {{ v.kosten_monat_netto }} €
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="4" class="px-4 py-4 text-center text-gray-500">
+                        Keine Verträge vorhanden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2 class="text-xl font-semibold mb-3">WAN-Leitungen</h2>
+<div class="bg-white shadow rounded-lg overflow-hidden mb-4">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Bezeichnung</th>
+                <th class="px-4 py-3 text-left">Standort</th>
+                <th class="px-4 py-3 text-left">Anschlussart</th>
+                <th class="px-4 py-3 text-left">Bandbreite</th>
+                <th class="px-4 py-3 text-left">Status</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for l in leitungen %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:wanleitung_detail' l.id %}"
+                           class="text-brand hover:underline">
+                            {{ l.standort.standort_code|default:"?" }}
+                            {% if l.bezeichnung %}
+                                - {{ l.bezeichnung }}
+                            {% else %}
+                                - {{ l.provider }}
+                            {% endif %}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:standort_detail' l.standort.id %}"
+                           class="hover:underline">
+                            {{ l.standort.name }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">{{ l.anschlussart|default:"-" }}</td>
+                    <td class="px-4 py-2">
+                        {% if l.bandbreite_down_mbit %}
+                            {{ l.bandbreite_down_mbit }} / {{ l.bandbreite_up_mbit|default:"?" }} Mbit
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2">{{ l.get_status_display }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-4 text-center text-gray-500">
+                        Keine Leitungen vorhanden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

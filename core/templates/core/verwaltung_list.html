@@ -1,0 +1,52 @@
+{% extends "core/base.html" %}
+
+{% block title %}Verwaltungen{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-semibold">Verwaltungen</h1>
+
+    {% if can_create_verwaltung %}
+        <a href="{% url 'core:verwaltung_create' %}"
+           class="bg-brand text-white px-4 py-2 rounded hover:bg-brand-dark text-sm">
+            + Neue Verwaltung
+        </a>
+    {% endif %}
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Name</th>
+                <th class="px-4 py-3 text-left">Kürzel</th>
+                <th class="px-4 py-3 text-left">Typ</th>
+                <th class="px-4 py-3 text-left">Standorte</th>
+                <th class="px-4 py-3 text-left">WAN-Leitungen</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for v in verwaltungen %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:verwaltung_detail' v.id %}"
+                           class="text-brand hover:underline">
+                            {{ v.name }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">{{ v.kuerzel|default:"-" }}</td>
+                    <td class="px-4 py-2">{{ v.get_typ_display|default:"-" }}</td>
+                    <td class="px-4 py-2">{{ v.standort_count }}</td>
+                    <td class="px-4 py-2">{{ v.leitung_count }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-4 text-center text-gray-500">
+                        Keine Verwaltungen vorhanden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

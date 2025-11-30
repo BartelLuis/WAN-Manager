@@ -1,0 +1,153 @@
+{% extends "core/base.html" %}
+
+{% block title %}WAN-Leitung{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-semibold">WAN-Leitung</h1>
+
+    {% if can_edit %}
+        <a href="{% url 'core:wanleitung_update' leitung.id %}"
+           class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+            Bearbeiten
+        </a>
+    {% endif %}
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Allgemein</h2>
+        <dl class="text-sm space-y-2">
+            <div>
+                <dt class="font-semibold text-gray-600">Bezeichnung / Tarif</dt>
+                <dd>
+                    {{ leitung.standort.standort_code|default:"?" }}
+                    {% if leitung.bezeichnung %}
+                        - {{ leitung.bezeichnung }}
+                    {% else %}
+                        - {{ leitung.provider }}
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Provider</dt>
+                <dd>{{ leitung.provider }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Standort</dt>
+                <dd>
+                    <a href="{% url 'core:standort_detail' leitung.standort.id %}"
+                       class="text-brand hover:underline">
+                        {{ leitung.standort.name }}
+                    </a>
+                    <span class="block text-xs text-gray-500">
+                        {{ leitung.standort.verwaltung.name }}
+                    </span>
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Anschlussart</dt>
+                <dd>{{ leitung.anschlussart|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Bandbreite</dt>
+                <dd>
+                    {% if leitung.bandbreite_down_mbit %}
+                        {{ leitung.bandbreite_down_mbit }} / {{ leitung.bandbreite_up_mbit|default:"?" }} Mbit
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Medium</dt>
+                <dd>{{ leitung.medium|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Status</dt>
+                <dd>{{ leitung.get_status_display }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Technik & IP</h2>
+        <dl class="text-sm space-y-2">
+            <div>
+                <dt class="font-semibold text-gray-600">VLAN ID</dt>
+                <dd>{{ leitung.vlan_id|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">IP-Adressbereich</dt>
+                <dd>{{ leitung.ip_adressbereich|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">NAT aktiv</dt>
+                <dd>
+                    {% if leitung.nat_aktiv %}
+                        Ja
+                    {% else %}
+                        Nein
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">CPE-Gerät</dt>
+                <dd>{{ leitung.cpe_geraet|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Management-IP</dt>
+                <dd>{{ leitung.cpe_management_ip|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Vertrag</dt>
+                <dd>
+                    {% if leitung.vertrag %}
+                        <a href="{% url 'core:vertrag_detail' leitung.vertrag.id %}"
+                           class="text-brand hover:underline">
+                            {{ leitung.vertrag.provider }} / {{ leitung.vertrag.vertragsnummer }}
+                        </a>
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Backup-Leitung</dt>
+                <dd>
+                    {% if leitung.backup_leitung %}
+                        <a href="{% url 'core:wanleitung_detail' leitung.backup_leitung.id %}"
+                           class="text-brand hover:underline">
+                            {{ leitung.backup_leitung }}
+                        </a>
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+            </div>
+        </dl>
+    </div>
+</div>
+
+<div class="bg-white shadow rounded-lg p-4 mb-8">
+    <h2 class="text-lg font-semibold mb-3">Zeiten & Bemerkungen</h2>
+    <dl class="text-sm space-y-2 mb-3">
+        <div>
+            <dt class="font-semibold text-gray-600">Inbetriebnahme</dt>
+            <dd>{{ leitung.inbetriebnahme_datum|date:"d.m.Y"|default:"-" }}</dd>
+        </div>
+        <div>
+            <dt class="font-semibold text-gray-600">Außer Betrieb</dt>
+            <dd>{{ leitung.ausserbetriebnahme_datum|date:"d.m.Y"|default:"-" }}</dd>
+        </div>
+    </dl>
+
+    {% if leitung.bemerkung_technik %}
+        <p class="text-sm text-gray-800 whitespace-pre-line">
+            {{ leitung.bemerkung_technik }}
+        </p>
+    {% else %}
+        <p class="text-sm text-gray-500">Keine technischen Bemerkungen hinterlegt.</p>
+    {% endif %}
+</div>
+{% endblock %}

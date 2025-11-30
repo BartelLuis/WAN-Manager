@@ -1,0 +1,70 @@
+{% extends "core/base.html" %}
+
+{% block title %}WAN-Leitungen{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-semibold">WAN-Leitungen</h1>
+
+    {% if can_create_wanleitung %}
+        <a href="{% url 'core:wanleitung_create' %}"
+           class="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
+            + Neue Leitung
+        </a>
+    {% endif %}
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Bezeichnung</th>
+                <th class="px-4 py-3 text-left">Standort</th>
+                <th class="px-4 py-3 text-left">Verwaltung</th>
+                <th class="px-4 py-3 text-left">Anschlussart</th>
+                <th class="px-4 py-3 text-left">Bandbreite</th>
+                <th class="px-4 py-3 text-left">Status</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for l in leitungen %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:wanleitung_detail' l.id %}"
+                           class="text-brand hover:underline">
+                            {{ l.standort.standort_code|default:"?" }}
+                            {% if l.bezeichnung %}
+                                - {{ l.bezeichnung }}
+                            {% else %}
+                                - {{ l.provider }}
+                            {% endif %}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:standort_detail' l.standort.id %}"
+                           class="hover:underline">
+                            {{ l.standort.name }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">{{ l.standort.verwaltung.name }}</td>
+                    <td class="px-4 py-2">{{ l.anschlussart|default:"-" }}</td>
+                    <td class="px-4 py-2">
+                        {% if l.bandbreite_down_mbit %}
+                            {{ l.bandbreite_down_mbit }} / {{ l.bandbreite_up_mbit|default:"?" }} Mbit
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2">{{ l.get_status_display }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="6" class="px-4 py-4 text-center text-gray-500">
+                        Keine Leitungen vorhanden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,149 @@
+{% extends "core/base.html" %}
+
+{% block title %}Vertrag {{ vertrag.vertragsnummer }}{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-semibold">Vertrag {{ vertrag.vertragsnummer }}</h1>
+
+    {% if can_edit %}
+        <a href="{% url 'core:vertrag_update' vertrag.id %}"
+           class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+            Bearbeiten
+        </a>
+    {% endif %}
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Stammdaten</h2>
+        <dl class="text-sm space-y-2">
+            <div>
+                <dt class="font-semibold text-gray-600">Verwaltung</dt>
+                <dd>{{ vertrag.verwaltung.name }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Provider</dt>
+                <dd>{{ vertrag.provider }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Bezeichnung</dt>
+                <dd>{{ vertrag.bezeichnung|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Rahmenvertrag</dt>
+                <dd>
+                    {% if vertrag.rahmenvertrag %}
+                        Ja
+                    {% else %}
+                        Nein
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Laufzeit</dt>
+                <dd>
+                    {{ vertrag.laufzeit_von|date:"d.m.Y"|default:"?" }}
+                    –
+                    {{ vertrag.laufzeit_bis|date:"d.m.Y"|default:"?" }}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Kündigungsfrist</dt>
+                <dd>{{ vertrag.kuendigungsfrist_tage|default:"-" }} Tage</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Kosten & Abrechnung</h2>
+        <dl class="text-sm space-y-2">
+            <div>
+                <dt class="font-semibold text-gray-600">Kosten / Monat (netto)</dt>
+                <dd>
+                    {% if vertrag.kosten_monat_netto %}
+                        {{ vertrag.kosten_monat_netto }} €
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Einmalige Kosten (netto)</dt>
+                <dd>
+                    {% if vertrag.kosten_einmalig_netto %}
+                        {{ vertrag.kosten_einmalig_netto }} €
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Kostenstelle</dt>
+                <dd>{{ vertrag.kostenstelle|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Rechnungsempfänger</dt>
+                <dd>{{ vertrag.rechnungsempfaenger|default:"-" }}</dd>
+            </div>
+        </dl>
+
+        <h3 class="text-md font-semibold mt-4 mb-1">Bemerkungen</h3>
+        <p class="text-sm text-gray-800 whitespace-pre-line">
+            {{ vertrag.bemerkung_vertrag|default:"(Keine Bemerkungen)" }}
+        </p>
+    </div>
+</div>
+
+<h2 class="text-xl font-semibold mb-3">Zugeordnete WAN-Leitungen</h2>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Bezeichnung</th>
+                <th class="px-4 py-3 text-left">Standort</th>
+                <th class="px-4 py-3 text-left">Bandbreite</th>
+                <th class="px-4 py-3 text-left">Status</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for l in leitungen %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:wanleitung_detail' l.id %}"
+                           class="text-brand hover:underline">
+                            {{ l.standort.standort_code|default:"?" }}
+                            {% if l.bezeichnung %}
+                                - {{ l.bezeichnung }}
+                            {% else %}
+                                - {{ l.provider }}
+                            {% endif %}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:standort_detail' l.standort.id %}"
+                           class="hover:underline">
+                            {{ l.standort.name }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">
+                        {% if l.bandbreite_down_mbit %}
+                            {{ l.bandbreite_down_mbit }} / {{ l.bandbreite_up_mbit|default:"?" }} Mbit
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2">{{ l.get_status_display }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="4" class="px-4 py-4 text-center text-gray-500">
+                        Keine Leitungen diesem Vertrag zugeordnet.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

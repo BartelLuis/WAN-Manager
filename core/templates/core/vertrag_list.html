@@ -1,0 +1,66 @@
+{% extends "core/base.html" %}
+
+{% block title %}Verträge{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-semibold">Verträge</h1>
+
+    {% if can_create_vertrag %}
+        <a href="{% url 'core:vertrag_create' %}"
+           class="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
+            + Neuer Vertrag
+        </a>
+    {% endif %}
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Provider</th>
+                <th class="px-4 py-3 text-left">Vertragsnummer</th>
+                <th class="px-4 py-3 text-left">Verwaltung</th>
+                <th class="px-4 py-3 text-left">Laufzeit</th>
+                <th class="px-4 py-3 text-left">Monatliche Kosten</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for v in vertraege %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">{{ v.provider }}</td>
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:vertrag_detail' v.id %}"
+                           class="text-brand hover:underline">
+                            {{ v.vertragsnummer }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">{{ v.verwaltung.name }}</td>
+                    <td class="px-4 py-2">
+                        {% if v.laufzeit_von or v.laufzeit_bis %}
+                            {{ v.laufzeit_von|date:"d.m.Y"|default:"?" }}
+                            –
+                            {{ v.laufzeit_bis|date:"d.m.Y"|default:"?" }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2">
+                        {% if v.kosten_monat_netto %}
+                            {{ v.kosten_monat_netto }} €
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-4 text-center text-gray-500">
+                        Keine Verträge vorhanden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

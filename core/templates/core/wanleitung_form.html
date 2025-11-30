@@ -1,0 +1,28 @@
+{% extends "core/base.html" %}
+
+{% block title %}
+    {% if is_edit %}WAN-Leitung bearbeiten{% else %}Neue WAN-Leitung{% endif %}
+{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">
+    {% if is_edit %}WAN-Leitung bearbeiten{% else %}Neue WAN-Leitung anlegen{% endif %}
+</h1>
+
+<div class="bg-white shadow rounded-lg p-6 max-w-3xl">
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div class="mt-4 flex gap-3">
+            <button type="submit"
+                    class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+                Speichern
+            </button>
+            <a href="{% url 'core:wanleitung_list' %}"
+               class="bg-gray-200 text-gray-800 px-4 py-2 rounded text-sm hover:bg-gray-300">
+                Abbrechen
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

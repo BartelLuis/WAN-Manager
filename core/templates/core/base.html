@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}WAN-Portal{% endblock %}</title>
+
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            DEFAULT: '#2563eb',
+                            dark: '#1e40af',
+                            light: '#3b82f6'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Einfache Styles für generierte Django-Formulare -->
+    <style>
+        form p {
+            margin-bottom: 1rem;
+        }
+        form label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        form input,
+        form select,
+        form textarea {
+            display: block;
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.95rem;
+        }
+        form .helptext {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900">
+
+<nav class="bg-brand text-white shadow mb-8">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+
+        <a href="{% url 'core:dashboard' %}"
+           class="text-xl font-semibold hover:text-gray-200">
+            WAN-Portal
+        </a>
+
+        <div class="space-x-4 text-sm">
+            <a href="{% url 'core:dashboard' %}" class="hover:text-gray-200">Dashboard</a>
+            <a href="{% url 'core:verwaltung_list' %}" class="hover:text-gray-200">Verwaltungen</a>
+            <a href="{% url 'core:standort_list' %}" class="hover:text-gray-200">Standorte</a>
+            <a href="{% url 'core:wanleitung_list' %}" class="hover:text-gray-200">Leitungen</a>
+            <a href="{% url 'core:vertrag_list' %}" class="hover:text-gray-200">Verträge</a>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs sm:text-sm">
+            {% if request.user.is_authenticated %}
+                <span>
+                    Eingeloggt als <span class="font-semibold">{{ request.user.username }}</span>
+                </span>
+                <span class="mx-1">|</span>
+
+                <!-- Logout als POST-Formular -->
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="hover:text-gray-200 underline underline-offset-2 decoration-gray-300 bg-transparent border-0 cursor-pointer p-0 text-xs sm:text-sm">
+                        Logout
+                    </button>
+                </form>
+            {% else %}
+                <span>Nicht eingeloggt</span>
+                <span class="mx-1">|</span>
+                <a href="{% url 'login' %}" class="hover:text-gray-200 underline underline-offset-2 decoration-gray-300">
+                    Login
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-7xl mx-auto px-4 pb-8">
+    {% block content %}{% endblock %}
+</div>
+
+</body>
+</html>
