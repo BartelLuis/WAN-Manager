@@ -37,7 +37,7 @@ class Standort(models.Model):
     adresse_strasse = models.CharField(max_length=255, blank=True, null=True)
     adresse_plz = models.CharField(max_length=10, blank=True, null=True)
     adresse_ort = models.CharField(max_length=100, blank=True, null=True)
-    # Gebäudetyp wird in der Oberfläche nicht mehr genutzt, lassen wir aber in der DB
+    # Gebäudetyp ist noch im Modell, wird aber in der Oberfläche nicht mehr verwendet
     gebaeude_typ = models.CharField(max_length=50, blank=True, null=True)
     bemerkung = models.TextField(blank=True, null=True)
     aktiv = models.BooleanField(default=True)
@@ -53,6 +53,7 @@ class Standort(models.Model):
         Kürzel-Verwaltung + erste 3 Buchstaben Ort + erste 3 Buchstaben Straße + Hausnummer:
         - 1     -> 001
         - 1b    -> 01b
+        Beispiel: 500HUSNEU042
         """
         if not self.verwaltung or not self.verwaltung.kuerzel:
             return self.standort_code
@@ -91,7 +92,8 @@ class Standort(models.Model):
                     digits_fmt = digits.zfill(3)
                 hausnummer_part = f"{digits_fmt}{letters.lower()}"
 
-        return f"{verw_kz}-{ort_part}{street_part}{hausnummer_part}"
+        # HIER war vorher das Minus
+        return f"{verw_kz}{ort_part}{street_part}{hausnummer_part}"
 
     def save(self, *args, **kwargs):
         # Standortkürzel jedes Mal neu berechnen, wenn genug Daten da sind
@@ -99,6 +101,7 @@ class Standort(models.Model):
         if new_code:
             self.standort_code = new_code
         super().save(*args, **kwargs)
+
 
 
 class Vertrag(models.Model):
