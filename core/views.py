@@ -36,7 +36,8 @@ def dashboard(request):
     verwaltungen = verwaltungen.annotate(
         standort_count=Count("standorte", distinct=True),
         leitung_count=Count("standorte__leitungen", distinct=True),
-        kosten_monat=Sum("vertraege__kosten_monat_netto"),
+        # WICHTIG: distinct=True, damit Verträge nicht wegen der Joins mehrfach gezählt werden
+        kosten_monat=Sum("vertraege__kosten_monat_netto", distinct=True),
     )
 
     context = {
