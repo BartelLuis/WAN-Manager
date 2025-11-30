@@ -30,6 +30,44 @@ class Verwaltung(models.Model):
         return self.name
 
 
+class Provider(models.Model):
+    name = models.CharField(max_length=255)
+    kuerzel = models.CharField(max_length=50, blank=True, null=True)
+    kundennummer = models.CharField(max_length=100, blank=True, null=True)
+    kontakt_name = models.CharField(max_length=255, blank=True, null=True)
+    kontakt_mail = models.EmailField(blank=True, null=True)
+    kontakt_tel = models.CharField(max_length=50, blank=True, null=True)
+    bemerkung = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        if self.kuerzel:
+            return f"{self.kuerzel} - {self.name}"
+        return self.name
+
+
+class Tarif(models.Model):
+    provider = models.ForeignKey(
+        Provider,
+        on_delete=models.CASCADE,
+        related_name="tarife",
+    )
+    name = models.CharField(max_length=255)
+    beschreibung = models.TextField(blank=True, null=True)
+    bandbreite_down_mbit = models.IntegerField(blank=True, null=True)
+    bandbreite_up_mbit = models.IntegerField(blank=True, null=True)
+    medium = models.CharField(max_length=50, blank=True, null=True)
+    bemerkung = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["provider__name", "name"]
+
+    def __str__(self):
+        return f"{self.provider} - {self.name}"
+
+
 class Standort(models.Model):
     verwaltung = models.ForeignKey(Verwaltung, on_delete=models.CASCADE, related_name="standorte")
     name = models.CharField(max_length=255)
@@ -92,21 +130,30 @@ class Standort(models.Model):
                     digits_fmt = digits.zfill(3)
                 hausnummer_part = f"{digits_fmt}{letters.lower()}"
 
-        # HIER war vorher das Minus
         return f"{verw_kz}{ort_part}{street_part}{hausnummer_part}"
 
     def save(self, *args, **kwargs):
-        # Standortkürzel jedes Mal neu berechnen, wenn genug Daten da sind
         new_code = self.generate_standort_code()
         if new_code:
             self.standort_code = new_code
         super().save(*args, **kwargs)
 
 
-
 class Vertrag(models.Model):
     verwaltung = models.ForeignKey(Verwaltung, on_delete=models.CASCADE, related_name="vertraege")
+
+    # Bezug auf Provider-Stammdaten (optional)
+    provider_ref = models.ForeignKey(
+        Provider,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="vertraege",
+    )
+
+    # Freitext-Provider (weiterhin da, z.B. für Exoten / Legacy)
     provider = models.CharField(max_length=255)
+
     vertragsnummer = models.CharField(max_length=100)
     rahmenvertrag = models.BooleanField(default=False)
     bezeichnung = models.CharField(max_length=255, blank=True, null=True)
@@ -143,10 +190,28 @@ class WanLeitung(models.Model):
         null=True,
     )
 
-    # Bezeichnung / Tarif der Leitung
+    # Stammdaten-Referenzen
+    provider_ref = models.ForeignKey(
+        Provider,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="leitungen",
+    )
+    tarif_ref = models.ForeignKey(
+        Tarif,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="leitungen",
+    )
+
+    # Bezeichnung / Tarif der Leitung (frei editierbar)
     bezeichnung = models.CharField(max_length=255, blank=True, null=True)
 
+    # Freitext-Provider (wird aus provider_ref befüllt, ist aber manuell überschreibbar)
     provider = models.CharField(max_length=255)
+
     anschlussart = models.CharField(max_length=100, blank=True, null=True)
     bandbreite_down_mbit = models.IntegerField(blank=True, null=True)
     bandbreite_up_mbit = models.IntegerField(blank=True, null=True)
@@ -176,10 +241,6 @@ class WanLeitung(models.Model):
 
 
 class UserProfile(models.Model):
-    """
-    Zusatzinfos zu User:
-    - optionale Zuordnung zu einer Verwaltung (für IT-Beauftragte)
-    """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     verwaltung = models.ForeignKey(Verwaltung, on_delete=models.SET_NULL, blank=True, null=True)
 
