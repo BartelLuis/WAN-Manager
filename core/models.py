@@ -19,12 +19,7 @@ class Verwaltung(models.Model):
 
     name = models.CharField(max_length=255)
     kuerzel = models.CharField(max_length=50, blank=True, null=True)
-    typ = models.CharField(
-        max_length=50,
-        choices=TYP_CHOICES,
-        blank=True,
-        null=True,
-    )
+    typ = models.CharField(max_length=50, choices=TYP_CHOICES, blank=True, null=True)
 
     def __str__(self):
         return self.name
@@ -49,11 +44,7 @@ class Provider(models.Model):
 
 
 class Tarif(models.Model):
-    provider = models.ForeignKey(
-        Provider,
-        on_delete=models.CASCADE,
-        related_name="tarife",
-    )
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="tarife")
     name = models.CharField(max_length=255)
     beschreibung = models.TextField(blank=True, null=True)
     bandbreite_down_mbit = models.IntegerField(blank=True, null=True)
@@ -75,8 +66,8 @@ class Standort(models.Model):
     adresse_strasse = models.CharField(max_length=255, blank=True, null=True)
     adresse_plz = models.CharField(max_length=10, blank=True, null=True)
     adresse_ort = models.CharField(max_length=100, blank=True, null=True)
-    # Gebäudetyp ist noch im Modell, wird aber in der Oberfläche nicht mehr verwendet
-    gebaeude_typ = models.CharField(max_length=50, blank=True, null=True)
+    gebaeude_typ = models.CharField(max_length=50, blank=True, null=True)  # wird im Frontend nicht genutzt
+    arbeitsplaetze = models.PositiveIntegerField(default=0)  # <-- NEU
     bemerkung = models.TextField(blank=True, null=True)
     aktiv = models.BooleanField(default=True)
 
@@ -124,10 +115,7 @@ class Standort(models.Model):
             m = re.match(r"(\d+)([A-Za-z]*)", number_raw)
             if m:
                 digits, letters = m.groups()
-                if letters:
-                    digits_fmt = digits.zfill(2)
-                else:
-                    digits_fmt = digits.zfill(3)
+                digits_fmt = digits.zfill(2) if letters else digits.zfill(3)
                 hausnummer_part = f"{digits_fmt}{letters.lower()}"
 
         return f"{verw_kz}{ort_part}{street_part}{hausnummer_part}"
@@ -142,16 +130,9 @@ class Standort(models.Model):
 class Vertrag(models.Model):
     verwaltung = models.ForeignKey(Verwaltung, on_delete=models.CASCADE, related_name="vertraege")
 
-    # Bezug auf Provider-Stammdaten (optional)
     provider_ref = models.ForeignKey(
-        Provider,
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="vertraege",
+        Provider, on_delete=models.SET_NULL, blank=True, null=True, related_name="vertraege"
     )
-
-    # Freitext-Provider (weiterhin da, z.B. für Exoten / Legacy)
     provider = models.CharField(max_length=255)
 
     vertragsnummer = models.CharField(max_length=100)
@@ -182,34 +163,16 @@ class WanLeitung(models.Model):
     ]
 
     standort = models.ForeignKey(Standort, on_delete=models.CASCADE, related_name="leitungen")
-    vertrag = models.ForeignKey(
-        Vertrag,
-        on_delete=models.SET_NULL,
-        related_name="leitungen",
-        blank=True,
-        null=True,
-    )
+    vertrag = models.ForeignKey(Vertrag, on_delete=models.SET_NULL, related_name="leitungen", blank=True, null=True)
 
-    # Stammdaten-Referenzen
     provider_ref = models.ForeignKey(
-        Provider,
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="leitungen",
+        Provider, on_delete=models.SET_NULL, blank=True, null=True, related_name="leitungen"
     )
     tarif_ref = models.ForeignKey(
-        Tarif,
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="leitungen",
+        Tarif, on_delete=models.SET_NULL, blank=True, null=True, related_name="leitungen"
     )
 
-    # Bezeichnung / Tarif der Leitung (frei editierbar)
     bezeichnung = models.CharField(max_length=255, blank=True, null=True)
-
-    # Freitext-Provider (wird aus provider_ref befüllt, ist aber manuell überschreibbar)
     provider = models.CharField(max_length=255)
 
     anschlussart = models.CharField(max_length=100, blank=True, null=True)
@@ -221,12 +184,7 @@ class WanLeitung(models.Model):
     nat_aktiv = models.BooleanField(default=False)
     cpe_geraet = models.CharField(max_length=255, blank=True, null=True)
     cpe_management_ip = models.CharField(max_length=50, blank=True, null=True)
-    backup_leitung = models.ForeignKey(
-        "self",
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-    )
+    backup_leitung = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True)
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default="aktiv")
     inbetriebnahme_datum = models.DateField(blank=True, null=True)
     ausserbetriebnahme_datum = models.DateField(blank=True, null=True)
