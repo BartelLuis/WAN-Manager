@@ -37,29 +37,73 @@
                 <th class="px-4 py-3 text-left">Verwaltung</th>
                 <th class="px-4 py-3 text-left">Ort</th>
                 <th class="px-4 py-3 text-left">Arbeitsplätze</th>
-                <th class="px-4 py-3 text-left">Leitungen</th>
+                <th class="px-4 py-3 text-left">WAN-Leitungen</th>
                 <th class="px-4 py-3 text-left">Aktiv</th>
             </tr>
         </thead>
+
         <tbody class="text-sm divide-y divide-gray-100">
             {% for s in standorte %}
-                <tr class="hover:bg-gray-50">
+                <tr class="hover:bg-gray-50 align-top">
                     <td class="px-4 py-2">
                         <a href="{% url 'core:standort_detail' s.id %}"
                            class="text-brand hover:underline">
                             {{ s.name }}
                         </a>
                     </td>
-                    <td class="px-4 py-2">{{ s.standort_code|default:"-" }}</td>
+
+                    <td class="px-4 py-2">
+                        {{ s.standort_code|default:"-" }}
+                    </td>
+
                     <td class="px-4 py-2">
                         <a href="{% url 'core:verwaltung_detail' s.verwaltung.id %}"
                            class="hover:underline">
                             {{ s.verwaltung.name }}
                         </a>
                     </td>
-                    <td class="px-4 py-2">{{ s.adresse_ort|default:"-" }}</td>
-                    <td class="px-4 py-2">{{ s.arbeitsplaetze|default:0 }}</td>
-                    <td class="px-4 py-2">{{ s.leitung_count }}</td>
+
+                    <td class="px-4 py-2">
+                        {{ s.adresse_ort|default:"-" }}
+                    </td>
+
+                    <td class="px-4 py-2">
+                        {{ s.arbeitsplaetze|default:0 }}
+                    </td>
+
+                    <!-- LEITUNGEN -->
+                    <td class="px-4 py-2">
+                        {% if s.leitungen.all %}
+                            <ul class="space-y-1">
+                                {% for l in s.leitungen.all %}
+                                    <li>
+                                        <strong>
+                                            {% if l.tarif_ref %}
+                                                {{ l.tarif_ref.name }}
+                                            {% elif l.bezeichnung %}
+                                                {{ l.bezeichnung }}
+                                            {% else %}
+                                                Leitung
+                                            {% endif %}
+                                        </strong>
+                                        —
+                                        {% if l.bandbreite_down_mbit and l.bandbreite_up_mbit %}
+                                            {{ l.bandbreite_down_mbit }}/{{ l.bandbreite_up_mbit }} Mbit/s
+                                        {% elif l.bandbreite_down_mbit %}
+                                            ↓ {{ l.bandbreite_down_mbit }} Mbit/s
+                                        {% elif l.bandbreite_up_mbit %}
+                                            ↑ {{ l.bandbreite_up_mbit }} Mbit/s
+                                        {% else %}
+                                            <span class="text-gray-400">Bandbreite unbekannt</span>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <span class="text-gray-400">Keine Leitungen</span>
+                        {% endif %}
+                    </td>
+
                     <td class="px-4 py-2">
                         {% if s.aktiv %}
                             <span class="text-green-700 font-semibold">Ja</span>
