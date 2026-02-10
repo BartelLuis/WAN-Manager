@@ -10,6 +10,7 @@ from .models import (
     UserProfile,
     Provider,
     Tarif,
+    GlobalSettings,
 )
 
 
@@ -44,7 +45,7 @@ class VertragAdmin(admin.ModelAdmin):
 
 @admin.register(WanLeitung)
 class WanLeitungAdmin(admin.ModelAdmin):
-    list_display = ("__str__", "standort", "provider_ref", "tarif_ref", "vertrag", "status")
+    list_display = ("__str__", "standort", "provider_ref", "tarif_ref", "vertrag","status")
     list_filter = ("status", "standort__verwaltung", "provider_ref")
     search_fields = (
         "provider",

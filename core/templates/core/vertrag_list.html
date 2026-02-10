@@ -1,54 +1,74 @@
 {% extends "core/base.html" %}
 
-{% block title %}Verwaltungen{% endblock %}
+{% block title %}Verträge{% endblock %}
 
 {% block content %}
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-2xl font-semibold">Verwaltungen</h1>
+<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold">Verträge</h1>
 
-    {% if can_create_verwaltung %}
-        <a href="{% url 'core:verwaltung_create' %}"
-           class="bg-brand text-white px-4 py-2 rounded hover:bg-brand-dark text-sm">
-            + Neue Verwaltung
-        </a>
-    {% endif %}
+        <!-- Debug-Hinweis: zeigt dir sofort, ob dein Button-Flag stimmt -->
+        <p class="text-xs text-gray-500">
+            can_create_vertrag = {{ can_create_vertrag|default:"(nicht gesetzt)" }}
+        </p>
+    </div>
+
+    <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
+        {% if can_create_vertrag %}
+            <a href="{% url 'core:vertrag_create' %}"
+               class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+                + Neuer Vertrag
+            </a>
+        {% endif %}
+    </div>
 </div>
 
 <div class="bg-white shadow rounded-lg overflow-hidden">
     <table class="min-w-full">
         <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
             <tr>
-                <th class="px-4 py-3 text-left">Name</th>
-                <th class="px-4 py-3 text-left">Kürzel</th>
-                <th class="px-4 py-3 text-left">Typ</th>
-                <th class="px-4 py-3 text-left">Standorte</th>
-                <th class="px-4 py-3 text-left">WAN-Leitungen</th>
-                <th class="px-4 py-3 text-left">Arbeitsplätze</th>
-                <th class="px-4 py-3 text-left">Kosten/Monat</th>
+                <th class="px-4 py-3 text-left">Vertragsnummer</th>
+                <th class="px-4 py-3 text-left">Verwaltung</th>
+                <th class="px-4 py-3 text-left">Provider</th>
+                <th class="px-4 py-3 text-left">Kosten (netto/Monat)</th>
             </tr>
         </thead>
+
         <tbody class="text-sm divide-y divide-gray-100">
-            {% for v in verwaltungen %}
+            {% for v in vertraege %}
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-2">
-                        <a href="{% url 'core:verwaltung_detail' v.id %}"
-                           class="text-brand hover:underline">
-                            {{ v.name }}
+                        <a href="{% url 'core:vertrag_detail' v.id %}" class="text-brand hover:underline">
+                            {{ v.vertragsnummer }}
                         </a>
                     </td>
-                    <td class="px-4 py-2">{{ v.kuerzel|default:"-" }}</td>
-                    <td class="px-4 py-2">{{ v.get_typ_display|default:"-" }}</td>
-                    <td class="px-4 py-2">{{ v.standort_count }}</td>
-                    <td class="px-4 py-2">{{ v.leitung_count }}</td>
-                    <td class="px-4 py-2">{{ v.arbeitsplaetze_sum|default:0 }}</td>
+
                     <td class="px-4 py-2">
-                        {{ v.kosten_monat|floatformat:2 }} €
+                        <a href="{% url 'core:verwaltung_detail' v.verwaltung.id %}" class="hover:underline">
+                            {{ v.verwaltung.name }}
+                        </a>
+                    </td>
+
+                    <td class="px-4 py-2">
+                        {% if v.provider_ref %}
+                            {{ v.provider_ref.name }}
+                        {% else %}
+                            <span class="text-gray-400">-</span>
+                        {% endif %}
+                    </td>
+
+                    <td class="px-4 py-2">
+                        {% if v.kosten_monat_netto %}
+                            {{ v.kosten_monat_netto }} €
+                        {% else %}
+                            <span class="text-gray-400">-</span>
+                        {% endif %}
                     </td>
                 </tr>
             {% empty %}
                 <tr>
-                    <td colspan="7" class="px-4 py-4 text-center text-gray-500">
-                        Keine Verwaltungen vorhanden.
+                    <td colspan="4" class="px-4 py-4 text-center text-gray-500">
+                        Keine Verträge gefunden.
                     </td>
                 </tr>
             {% endfor %}

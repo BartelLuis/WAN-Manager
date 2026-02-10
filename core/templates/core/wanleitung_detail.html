@@ -100,19 +100,6 @@
                 <dd>{{ leitung.cpe_management_ip|default:"-" }}</dd>
             </div>
             <div>
-                <dt class="font-semibold text-gray-600">Vertrag</dt>
-                <dd>
-                    {% if leitung.vertrag %}
-                        <a href="{% url 'core:vertrag_detail' leitung.vertrag.id %}"
-                           class="text-brand hover:underline">
-                            {{ leitung.vertrag.provider }} / {{ leitung.vertrag.vertragsnummer }}
-                        </a>
-                    {% else %}
-                        -
-                    {% endif %}
-                </dd>
-            </div>
-            <div>
                 <dt class="font-semibold text-gray-600">Backup-Leitung</dt>
                 <dd>
                     {% if leitung.backup_leitung %}

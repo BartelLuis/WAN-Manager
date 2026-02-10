@@ -20,7 +20,7 @@ class StandortForm(forms.ModelForm):
             "adresse_strasse",
             "adresse_plz",
             "adresse_ort",
-            "arbeitsplaetze",  # <-- NEU
+            "arbeitsplaetze",
             "bemerkung",
             "aktiv",
         ]
@@ -52,14 +52,18 @@ class TarifForm(forms.ModelForm):
 
 
 class VertragForm(forms.ModelForm):
-    kostenstelle = forms.ChoiceField(required=False, label="Kostenstelle (Verwaltungskürzel)")
+    """
+    Vertrag-Form mit:
+    - Verwaltung einschränken per user.profile.verwaltung (IT-Beauftragter)
+    - Kostenstelle Dropdown aus Verwaltungskürzeln
+    - provider (Textfeld) automatisch aus provider_ref, falls gesetzt
+    """
 
     class Meta:
         model = Vertrag
         fields = [
             "verwaltung",
             "provider_ref",
-            "provider",
             "vertragsnummer",
             "rahmenvertrag",
             "bezeichnung",
@@ -72,31 +76,55 @@ class VertragForm(forms.ModelForm):
             "rechnungsempfaenger",
             "bemerkung_vertrag",
         ]
+        labels = {
+            "verwaltung": "Verwaltung",
+            "vertragsnummer": "Vertragsnummer",
+            "kosten_monat_netto": "Kosten (netto/Monat)",
+            "provider_ref": "Provider",
+        }
 
     def __init__(self, *args, **kwargs):
+        # 🔥 user darf NICHT an super() weitergegeben werden
+        user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
+        # --- Verwaltung einschränken für IT-Beauftragte (wenn Profile gesetzt) ---
+        if user and hasattr(user, "profile") and getattr(user.profile, "verwaltung_id", None):
+            self.fields["verwaltung"].queryset = Verwaltung.objects.filter(id=user.profile.verwaltung_id)
+            self.fields["verwaltung"].initial = user.profile.verwaltung_id
+
+            # extrem wichtig: instance direkt setzen, damit niemand irgendwo vertrag.verwaltung liest und es knallt
+            if not getattr(self.instance, "verwaltung_id", None):
+                self.instance.verwaltung_id = user.profile.verwaltung_id
+
+        # --- Kostenstelle Dropdown: Verwaltungskürzel ---
         verwaltungen = Verwaltung.objects.all().order_by("name")
         choices = [("", "---------")]
         for v in verwaltungen:
             label = f"{v.kuerzel} - {v.name}" if v.kuerzel else v.name
             choices.append((v.kuerzel or v.name, label))
-        self.fields["kostenstelle"].choices = choices
+        if "kostenstelle" in self.fields:
+            self.fields["kostenstelle"].choices = choices
 
+        # --- Provider queryset sortiert ---
         if "provider_ref" in self.fields:
             self.fields["provider_ref"].queryset = Provider.objects.all().order_by("name")
 
+        # --- Wenn bestehender Vertrag: Kostenstelle initial aus Verwaltungskürzel setzen ---
         if self.instance and self.instance.pk and getattr(self.instance, "verwaltung_id", None):
             verwaltung = self.instance.verwaltung
-            if verwaltung.kuerzel:
+            if getattr(verwaltung, "kuerzel", None):
                 self.initial.setdefault("kostenstelle", verwaltung.kuerzel)
 
     def clean(self):
         cleaned = super().clean()
         provider_ref = cleaned.get("provider_ref")
         provider_text = cleaned.get("provider")
+
+        # Wenn provider_ref gesetzt, aber provider (Textfeld) leer → automatisch füllen
         if provider_ref and not provider_text:
             cleaned["provider"] = provider_ref.kuerzel or provider_ref.name
+
         return cleaned
 
 
@@ -108,18 +136,12 @@ class WanLeitungForm(forms.ModelForm):
             "vertrag",
             "provider_ref",
             "tarif_ref",
-            "bezeichnung",
-            "provider",
-            "anschlussart",
-            "bandbreite_down_mbit",
-            "bandbreite_up_mbit",
             "medium",
             "vlan_id",
             "ip_adressbereich",
             "nat_aktiv",
             "cpe_geraet",
             "cpe_management_ip",
-            "backup_leitung",
             "status",
             "inbetriebnahme_datum",
             "ausserbetriebnahme_datum",

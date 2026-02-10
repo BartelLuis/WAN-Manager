@@ -18,8 +18,11 @@ class Verwaltung(models.Model):
     ]
 
     name = models.CharField(max_length=255)
-    kuerzel = models.CharField(max_length=50, blank=True, null=True)
+    kuerzel = models.CharField("VKZ", max_length=50, blank=True, null=True, unique=True)
     typ = models.CharField(max_length=50, choices=TYP_CHOICES, blank=True, null=True)
+
+    class Meta:
+        ordering = ["kuerzel"]
 
     def __str__(self):
         return self.name
@@ -63,19 +66,22 @@ class Standort(models.Model):
     verwaltung = models.ForeignKey(Verwaltung, on_delete=models.CASCADE, related_name="standorte")
     name = models.CharField(max_length=255)
     standort_code = models.CharField(max_length=50, blank=True, null=True)
-    adresse_strasse = models.CharField(max_length=255, blank=True, null=True)
-    adresse_plz = models.CharField(max_length=10, blank=True, null=True)
-    adresse_ort = models.CharField(max_length=100, blank=True, null=True)
+    adresse_strasse = models.CharField("Straße", max_length=255, blank=True, null=True)
+    adresse_plz = models.CharField("Postleitzahl", max_length=10, blank=True, null=True)
+    adresse_ort = models.CharField("Ort", max_length=100, blank=True, null=True)
     gebaeude_typ = models.CharField(max_length=50, blank=True, null=True)  # wird im Frontend nicht genutzt
-    arbeitsplaetze = models.PositiveIntegerField(default=0)  # <-- NEU
+    arbeitsplaetze = models.PositiveIntegerField("Arbeitsplätze", default=0)  # <-- NEU
     bemerkung = models.TextField(blank=True, null=True)
     aktiv = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ["verwaltung__name", "name"]
+        ordering = ["standort_code"]
 
     def __str__(self):
-        return f"{self.name} ({self.verwaltung.kuerzel or self.verwaltung.name})"
+        if self.standort_code:
+            return self.standort_code
+        return self.name
+
 
     def generate_standort_code(self):
         """
@@ -144,8 +150,8 @@ class Vertrag(models.Model):
     kosten_monat_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     kosten_einmalig_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     kostenstelle = models.CharField(max_length=100, blank=True, null=True)
-    rechnungsempfaenger = models.CharField(max_length=255, blank=True, null=True)
-    bemerkung_vertrag = models.TextField(blank=True, null=True)
+    rechnungsempfaenger = models.CharField("Rechnungsempfänger", max_length=255, blank=True, null=True)
+    bemerkung_vertrag = models.TextField("Bemerkung Vertrag", blank=True, null=True)
 
     class Meta:
         ordering = ["provider", "vertragsnummer"]
@@ -162,15 +168,19 @@ class WanLeitung(models.Model):
         ("ausser_betrieb", "Außer Betrieb"),
     ]
 
+    MEDIUM_CHOICES = [
+        ("dsl", "DSL"),
+        ("fibre", "Glasfaser"),
+        ("mobile", "Mobilfunk"),
+        ("cable", "Kabel"),
+    ]
+
     standort = models.ForeignKey(Standort, on_delete=models.CASCADE, related_name="leitungen")
     vertrag = models.ForeignKey(Vertrag, on_delete=models.SET_NULL, related_name="leitungen", blank=True, null=True)
 
-    provider_ref = models.ForeignKey(
-        Provider, on_delete=models.SET_NULL, blank=True, null=True, related_name="leitungen"
-    )
-    tarif_ref = models.ForeignKey(
-        Tarif, on_delete=models.SET_NULL, blank=True, null=True, related_name="leitungen"
-    )
+
+    provider_ref = models.ForeignKey(Provider, on_delete=models.SET_NULL, blank=True, null=True, related_name="leitungen")
+    tarif_ref = models.ForeignKey(Tarif, on_delete=models.SET_NULL, blank=True, null=True, related_name="leitungen")
 
     bezeichnung = models.CharField(max_length=255, blank=True, null=True)
     provider = models.CharField(max_length=255)
@@ -178,17 +188,17 @@ class WanLeitung(models.Model):
     anschlussart = models.CharField(max_length=100, blank=True, null=True)
     bandbreite_down_mbit = models.IntegerField(blank=True, null=True)
     bandbreite_up_mbit = models.IntegerField(blank=True, null=True)
-    medium = models.CharField(max_length=50, blank=True, null=True)
-    vlan_id = models.IntegerField(blank=True, null=True)
-    ip_adressbereich = models.CharField(max_length=50, blank=True, null=True)
-    nat_aktiv = models.BooleanField(default=False)
-    cpe_geraet = models.CharField(max_length=255, blank=True, null=True)
-    cpe_management_ip = models.CharField(max_length=50, blank=True, null=True)
+    medium = models.CharField(max_length=50, choices=MEDIUM_CHOICES)
+    vlan_id = models.IntegerField("VLAN-ID", blank=True, null=True)
+    ip_adressbereich = models.CharField("IP-Adresse(n)", max_length=50, blank=True, null=True)
+    nat_aktiv = models.BooleanField("NAT Aktiv?", default=False)
+    cpe_geraet = models.CharField("CPE Gerät", max_length=255, blank=True, null=True)
+    cpe_management_ip = models.CharField("CPE Management IP", max_length=50, blank=True, null=True)
     backup_leitung = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True)
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default="aktiv")
-    inbetriebnahme_datum = models.DateField(blank=True, null=True)
-    ausserbetriebnahme_datum = models.DateField(blank=True, null=True)
-    bemerkung_technik = models.TextField(blank=True, null=True)
+    inbetriebnahme_datum = models.DateField("Inbetriebnahme-Datum", blank=True, null=True)
+    ausserbetriebnahme_datum = models.DateField("Außerbetriebnahme-Datum", blank=True, null=True)
+    bemerkung_technik = models.TextField("Bemerkung Technik", blank=True, null=True)
 
     class Meta:
         ordering = ["standort__verwaltung__name", "standort__name", "provider"]
@@ -204,3 +214,21 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.user.username
+
+class GlobalSettings(models.Model):
+    """
+    Singleton für globale WAN-Parameter.
+    """
+
+    mbit_pro_arbeitsplatz = models.PositiveIntegerField(
+        default=10,
+        verbose_name="Mbit/s pro Arbeitsplatz"
+    )
+
+    def save(self, *args, **kwargs):
+        self.pk = 1  # erzwingt genau einen Datensatz
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return "Globale Einstellungen"
+

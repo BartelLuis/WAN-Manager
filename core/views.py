@@ -11,7 +11,7 @@ from django.db.models import (
     IntegerField,
     DecimalField,
     Value,
-    Prefetch,  # ← EINZIGE NEUE SACHE
+    Prefetch,
 )
 from django.db.models.functions import Coalesce
 
@@ -24,6 +24,20 @@ from .forms import (
     ProviderForm,
     TarifForm,
 )
+
+# --- WAN Config (MBits pro Arbeitsplatz, Down + Up) ---
+try:
+    from .wan_config import (
+        WAN_MBIT_PER_AP_DOWN,
+        WAN_MBIT_PER_AP_UP,
+        WAN_THRESHOLD_GREEN,
+        WAN_THRESHOLD_YELLOW,
+    )
+except Exception:
+    WAN_MBIT_PER_AP_DOWN = 10
+    WAN_MBIT_PER_AP_UP = 2
+    WAN_THRESHOLD_GREEN = 1.30
+    WAN_THRESHOLD_YELLOW = 0.90
 
 
 def user_in_group(user, group_name: str) -> bool:
@@ -49,10 +63,13 @@ def _annotate_verwaltung_counts_and_sums(qs):
     Annotates für:
       - standort_count
       - leitung_count
-      - kosten_monat
-      - arbeitsplaetze_sum
+      - kosten_monat (Summe der Verträge)
+      - arbeitsplaetze_sum (Summe der Standorte)
+
+    Summen per Subquery, damit JOINs nichts multiplizieren.
     """
 
+    # Summe Arbeitsplätze pro Verwaltung (Integer)
     standort_sum_subq = (
         Standort.objects
         .filter(verwaltung=OuterRef("pk"))
@@ -61,6 +78,7 @@ def _annotate_verwaltung_counts_and_sums(qs):
         .values("s")[:1]
     )
 
+    # Summe Kosten pro Verwaltung (Decimal)
     kosten_sum_subq = (
         Vertrag.objects
         .filter(verwaltung=OuterRef("pk"))
@@ -80,10 +98,7 @@ def _annotate_verwaltung_counts_and_sums(qs):
         ),
 
         kosten_monat=Coalesce(
-            Subquery(
-                kosten_sum_subq,
-                output_field=DecimalField(max_digits=10, decimal_places=2),
-            ),
+            Subquery(kosten_sum_subq, output_field=DecimalField(max_digits=10, decimal_places=2)),
             Value(Decimal("0.00")),
             output_field=DecimalField(max_digits=10, decimal_places=2),
         ),
@@ -96,7 +111,7 @@ def _annotate_verwaltung_counts_and_sums(qs):
 def dashboard(request):
     user = request.user
     verwaltungen = _verwaltungen_queryset_for_user(user)
-    verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen)
+    verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen).order_by("kuerzel")
 
     return render(request, "core/dashboard.html", {"verwaltungen": verwaltungen})
 
@@ -107,16 +122,14 @@ def dashboard(request):
 def verwaltung_list(request):
     user = request.user
     verwaltungen = _verwaltungen_queryset_for_user(user)
-    verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen)
+    verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen).order_by("kuerzel")
 
     return render(
         request,
         "core/verwaltung_list.html",
-        {
-            "verwaltungen": verwaltungen,
-            "can_create_verwaltung": is_super_or_net_admin(user),
-        },
+        {"verwaltungen": verwaltungen, "can_create_verwaltung": is_super_or_net_admin(user)},
     )
+
 
 
 @login_required
@@ -178,21 +191,171 @@ def verwaltung_detail(request, pk):
         .filter(standort__verwaltung=verwaltung)
     )
 
+    context = {
+        "verwaltung": verwaltung,
+        "standorte": standorte,
+        "vertraege": vertraege,
+        "leitungen": leitungen,
+        "arbeitsplaetze_sum": arbeitsplaetze_sum,
+        "can_edit": is_super_or_net_admin(user),
+    }
+    return render(request, "core/verwaltung_detail.html", context)
+
+
+# ---------------------------- Provider ----------------------------
+
+@login_required
+def provider_list(request):
+    user = request.user
+    providers = Provider.objects.annotate(
+        tarif_count=Count("tarife", distinct=True),
+        leitung_count=Count("leitungen", distinct=True),
+        vertrag_count=Count("vertraege", distinct=True),
+    ).order_by("name")
+
     return render(
         request,
-        "core/verwaltung_detail.html",
+        "core/provider_list.html",
+        {"providers": providers, "can_create_provider": is_super_or_net_admin(user)},
+    )
+
+
+@login_required
+@user_passes_test(is_super_or_net_admin)
+def provider_create(request):
+    if request.method == "POST":
+        form = ProviderForm(request.POST)
+        if form.is_valid():
+            provider = form.save()
+            return redirect("core:provider_detail", pk=provider.pk)
+    else:
+        form = ProviderForm()
+
+    return render(request, "core/provider_form.html", {"form": form})
+
+
+@login_required
+@user_passes_test(is_super_or_net_admin)
+def provider_update(request, pk):
+    provider = get_object_or_404(Provider, pk=pk)
+
+    if request.method == "POST":
+        form = ProviderForm(request.POST, instance=provider)
+        if form.is_valid():
+            provider = form.save()
+            return redirect("core:provider_detail", pk=provider.pk)
+    else:
+        form = ProviderForm(instance=provider)
+
+    return render(
+        request,
+        "core/provider_form.html",
+        {"form": form, "is_edit": True, "provider": provider},
+    )
+
+
+@login_required
+def provider_detail(request, pk):
+    user = request.user
+    provider = get_object_or_404(Provider, pk=pk)
+
+    tarife = provider.tarife.all().order_by("name")
+    leitungen = provider.leitungen.select_related("standort", "standort__verwaltung", "vertrag")
+    vertraege = provider.vertraege.select_related("verwaltung")
+
+    return render(
+        request,
+        "core/provider_detail.html",
         {
-            "verwaltung": verwaltung,
-            "standorte": standorte,
-            "vertraege": vertraege,
+            "provider": provider,
+            "tarife": tarife,
             "leitungen": leitungen,
-            "arbeitsplaetze_sum": arbeitsplaetze_sum,
+            "vertraege": vertraege,
             "can_edit": is_super_or_net_admin(user),
         },
     )
 
 
+# ---------------------------- Tarife ----------------------------
+
+@login_required
+def tarif_list(request):
+    user = request.user
+    tarife = Tarif.objects.select_related("provider").annotate(
+        leitung_count=Count("leitungen", distinct=True),
+    ).order_by("provider__name", "name")
+
+    return render(
+        request,
+        "core/tarif_list.html",
+        {"tarife": tarife, "can_create_tarif": is_super_or_net_admin(user)},
+    )
+
+
+@login_required
+@user_passes_test(is_super_or_net_admin)
+def tarif_create(request):
+    if request.method == "POST":
+        form = TarifForm(request.POST)
+        if form.is_valid():
+            tarif = form.save()
+            return redirect("core:tarif_detail", pk=tarif.pk)
+    else:
+        form = TarifForm()
+
+    return render(request, "core/tarif_form.html", {"form": form})
+
+
+@login_required
+@user_passes_test(is_super_or_net_admin)
+def tarif_update(request, pk):
+    tarif = get_object_or_404(Tarif, pk=pk)
+
+    if request.method == "POST":
+        form = TarifForm(request.POST, instance=tarif)
+        if form.is_valid():
+            tarif = form.save()
+            return redirect("core:tarif_detail", pk=tarif.pk)
+    else:
+        form = TarifForm(instance=tarif)
+
+    return render(
+        request,
+        "core/tarif_form.html",
+        {"form": form, "is_edit": True, "tarif": tarif},
+    )
+
+
+@login_required
+def tarif_detail(request, pk):
+    user = request.user
+    tarif = get_object_or_404(Tarif.objects.select_related("provider"), pk=pk)
+    leitungen = tarif.leitungen.select_related("standort", "standort__verwaltung", "vertrag")
+
+    return render(
+        request,
+        "core/tarif_detail.html",
+        {"tarif": tarif, "leitungen": leitungen, "can_edit": is_super_or_net_admin(user)},
+    )
+
+
 # ---------------------------- Standorte ----------------------------
+
+def _status_for(actual, required):
+    """
+    actual/required -> green/yellow/red/unknown
+    """
+    if actual is None:
+        return "unknown"
+    if required <= 0:
+        return "green"
+    ratio = float(actual) / float(required)
+    if ratio >= float(WAN_THRESHOLD_GREEN):
+        return "green"
+    if ratio >= float(WAN_THRESHOLD_YELLOW):
+        return "yellow"
+    return "red"
+
 
 @login_required
 def standort_list(request):
@@ -207,10 +370,9 @@ def standort_list(request):
     standorte = (
         Standort.objects
         .select_related("verwaltung")
-        .prefetch_related(
-            Prefetch("leitungen", queryset=leitungen_qs)
-        )
+        .prefetch_related(Prefetch("leitungen", queryset=leitungen_qs))
         .annotate(leitung_count=Count("leitungen"))
+        .order_by("standort_code")   # 🔥 HIER
     )
 
     if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
@@ -220,15 +382,46 @@ def standort_list(request):
     if search:
         standorte = standorte.filter(name__icontains=search)
 
+    rows = []
+    for s in standorte:
+        ap = int(getattr(s, "arbeitsplaetze", 0) or 0)
+        required_down = ap * int(WAN_MBIT_PER_AP_DOWN)
+        required_up = ap * int(WAN_MBIT_PER_AP_UP)
+
+        leitung_items = []
+        for l in s.leitungen.all():
+            down = getattr(l, "bandbreite_down_mbit", None)
+            up = getattr(l, "bandbreite_up_mbit", None)
+
+            leitung_items.append({
+                "leitung": l,
+                "down": down,
+                "up": up,
+                "required_down": required_down,
+                "required_up": required_up,
+                "status_down": _status_for(down, required_down),
+                "status_up": _status_for(up, required_up),
+            })
+
+        rows.append({
+            "standort": s,
+            "required_down": required_down,
+            "required_up": required_up,
+            "leitungen": leitung_items,
+        })
+
     return render(
         request,
         "core/standort_list.html",
         {
-            "standorte": standorte,
+            "rows": rows,
             "search": search,
             "can_create_standort": is_super_or_net_admin(user),
+            "mbit_per_ap_down": WAN_MBIT_PER_AP_DOWN,
+            "mbit_per_ap_up": WAN_MBIT_PER_AP_UP,
         },
     )
+
 
 
 @login_required
@@ -274,20 +467,12 @@ def standort_detail(request, pk):
         if standort.verwaltung_id != user.profile.verwaltung_id:
             return render(request, "core/forbidden.html", status=403)
 
-    leitungen = standort.leitungen.select_related(
-        "vertrag",
-        "provider_ref",
-        "tarif_ref",
-    )
+    leitungen = standort.leitungen.select_related("vertrag", "provider_ref", "tarif_ref")
 
     return render(
         request,
         "core/standort_detail.html",
-        {
-            "standort": standort,
-            "leitungen": leitungen,
-            "can_edit": is_super_or_net_admin(user),
-        },
+        {"standort": standort, "leitungen": leitungen, "can_edit": is_super_or_net_admin(user)},
     )
 
 
@@ -298,11 +483,7 @@ def wanleitung_list(request):
     user = request.user
 
     leitungen = WanLeitung.objects.select_related(
-        "standort",
-        "standort__verwaltung",
-        "vertrag",
-        "provider_ref",
-        "tarif_ref",
+        "standort", "standort__verwaltung", "vertrag", "provider_ref", "tarif_ref"
     )
 
     if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
@@ -311,10 +492,7 @@ def wanleitung_list(request):
     return render(
         request,
         "core/wanleitung_list.html",
-        {
-            "leitungen": leitungen,
-            "can_create_wanleitung": is_super_or_net_admin(user),
-        },
+        {"leitungen": leitungen, "can_create_wanleitung": is_super_or_net_admin(user)},
     )
 
 
@@ -356,11 +534,7 @@ def wanleitung_update(request, pk):
 def wanleitung_detail(request, pk):
     leitung = get_object_or_404(
         WanLeitung.objects.select_related(
-            "standort",
-            "standort__verwaltung",
-            "vertrag",
-            "provider_ref",
-            "tarif_ref",
+            "standort", "standort__verwaltung", "vertrag", "provider_ref", "tarif_ref"
         ),
         pk=pk,
     )
@@ -373,10 +547,7 @@ def wanleitung_detail(request, pk):
     return render(
         request,
         "core/wanleitung_detail.html",
-        {
-            "leitung": leitung,
-            "can_edit": is_super_or_net_admin(user),
-        },
+        {"leitung": leitung, "can_edit": is_super_or_net_admin(user)},
     )
 
 
@@ -394,23 +565,22 @@ def vertrag_list(request):
     return render(
         request,
         "core/vertrag_list.html",
-        {
-            "vertraege": vertraege,
-            "can_create_vertrag": is_super_or_net_admin(user),
-        },
+        {"vertraege": vertraege, "can_create_vertrag": is_super_or_net_admin(user)},
     )
 
 
 @login_required
 @user_passes_test(is_super_or_net_admin)
 def vertrag_create(request):
+    user = request.user
+
     if request.method == "POST":
-        form = VertragForm(request.POST)
+        form = VertragForm(request.POST, user=user)
         if form.is_valid():
             vertrag = form.save()
             return redirect("core:vertrag_detail", pk=vertrag.pk)
     else:
-        form = VertragForm()
+        form = VertragForm(user=user)
 
     return render(request, "core/vertrag_form.html", {"form": form})
 
@@ -418,15 +588,16 @@ def vertrag_create(request):
 @login_required
 @user_passes_test(is_super_or_net_admin)
 def vertrag_update(request, pk):
+    user = request.user
     vertrag = get_object_or_404(Vertrag, pk=pk)
 
     if request.method == "POST":
-        form = VertragForm(request.POST, instance=vertrag)
+        form = VertragForm(request.POST, instance=vertrag, user=user)
         if form.is_valid():
             vertrag = form.save()
             return redirect("core:vertrag_detail", pk=vertrag.pk)
     else:
-        form = VertragForm(instance=vertrag)
+        form = VertragForm(instance=vertrag, user=user)
 
     return render(
         request,
@@ -437,10 +608,7 @@ def vertrag_update(request, pk):
 
 @login_required
 def vertrag_detail(request, pk):
-    vertrag = get_object_or_404(
-        Vertrag.objects.select_related("verwaltung", "provider_ref"),
-        pk=pk,
-    )
+    vertrag = get_object_or_404(Vertrag.objects.select_related("verwaltung", "provider_ref"), pk=pk)
     user = request.user
 
     if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
@@ -448,18 +616,11 @@ def vertrag_detail(request, pk):
             return render(request, "core/forbidden.html", status=403)
 
     leitungen = vertrag.leitungen.select_related(
-        "standort",
-        "standort__verwaltung",
-        "provider_ref",
-        "tarif_ref",
+        "standort", "standort__verwaltung", "provider_ref", "tarif_ref"
     )
 
     return render(
         request,
         "core/vertrag_detail.html",
-        {
-            "vertrag": vertrag,
-            "leitungen": leitungen,
-            "can_edit": is_super_or_net_admin(user),
-        },
+        {"vertrag": vertrag, "leitungen": leitungen, "can_edit": is_super_or_net_admin(user)},
     )

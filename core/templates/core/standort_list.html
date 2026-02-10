@@ -4,7 +4,12 @@
 
 {% block content %}
 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-    <h1 class="text-2xl font-semibold">Standorte</h1>
+    <div>
+        <h1 class="text-2xl font-semibold">Standorte</h1>
+        <p class="text-sm text-gray-600">
+            Bewertung: Bedarf Down/Up pro Arbeitsplatz (Down {{ mbit_per_ap_down }} Mbit/s, Up {{ mbit_per_ap_up }} Mbit/s)
+        </p>
+    </div>
 
     <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
         <form method="get" class="flex gap-2">
@@ -37,23 +42,26 @@
                 <th class="px-4 py-3 text-left">Verwaltung</th>
                 <th class="px-4 py-3 text-left">Ort</th>
                 <th class="px-4 py-3 text-left">Arbeitsplätze</th>
-                <th class="px-4 py-3 text-left">WAN-Leitungen</th>
+                <th class="px-4 py-3 text-left">WAN-Leitungen (Down/Up)</th>
                 <th class="px-4 py-3 text-left">Aktiv</th>
             </tr>
         </thead>
 
         <tbody class="text-sm divide-y divide-gray-100">
-            {% for s in standorte %}
+            {% for row in rows %}
+                {% with s=row.standort %}
                 <tr class="hover:bg-gray-50 align-top">
-                    <td class="px-4 py-2">
-                        <a href="{% url 'core:standort_detail' s.id %}"
-                           class="text-brand hover:underline">
-                            {{ s.name }}
-                        </a>
+                    <!-- NAME: nur Anzeige, NICHT klickbar -->
+                    <td class="px-4 py-2 text-gray-700">
+                        {{ s.name }}
                     </td>
 
-                    <td class="px-4 py-2">
-                        {{ s.standort_code|default:"-" }}
+                    <!-- KÜRZEL: klickbar -->
+                    <td class="px-4 py-2 font-mono font-semibold">
+                        <a href="{% url 'core:standort_detail' s.id %}"
+                           class="text-brand hover:underline">
+                            {{ s.standort_code|default:"-" }}
+                        </a>
                     </td>
 
                     <td class="px-4 py-2">
@@ -63,19 +71,15 @@
                         </a>
                     </td>
 
-                    <td class="px-4 py-2">
-                        {{ s.adresse_ort|default:"-" }}
-                    </td>
+                    <td class="px-4 py-2">{{ s.adresse_ort|default:"-" }}</td>
+
+                    <td class="px-4 py-2">{{ s.arbeitsplaetze|default:0 }}</td>
 
                     <td class="px-4 py-2">
-                        {{ s.arbeitsplaetze|default:0 }}
-                    </td>
-
-                    <!-- LEITUNGEN -->
-                    <td class="px-4 py-2">
-                        {% if s.leitungen.all %}
+                        {% if row.leitungen %}
                             <ul class="space-y-1">
-                                {% for l in s.leitungen.all %}
+                                {% for item in row.leitungen %}
+                                    {% with l=item.leitung %}
                                     <li>
                                         <strong>
                                             {% if l.tarif_ref %}
@@ -87,16 +91,49 @@
                                             {% endif %}
                                         </strong>
                                         —
-                                        {% if l.bandbreite_down_mbit and l.bandbreite_up_mbit %}
-                                            {{ l.bandbreite_down_mbit }}/{{ l.bandbreite_up_mbit }} Mbit/s
-                                        {% elif l.bandbreite_down_mbit %}
-                                            ↓ {{ l.bandbreite_down_mbit }} Mbit/s
-                                        {% elif l.bandbreite_up_mbit %}
-                                            ↑ {{ l.bandbreite_up_mbit }} Mbit/s
+                                        <!-- Ampel Down -->
+                                        {% if item.status_down == "green" %}
+                                            <span class="text-green-700 font-semibold">●</span>
+                                        {% elif item.status_down == "yellow" %}
+                                            <span class="text-yellow-600 font-semibold">●</span>
+                                        {% elif item.status_down == "red" %}
+                                            <span class="text-red-700 font-semibold">●</span>
                                         {% else %}
-                                            <span class="text-gray-400">Bandbreite unbekannt</span>
+                                            <span class="text-gray-400 font-semibold">●</span>
                                         {% endif %}
+                                        <span class="text-gray-700">
+                                            Down:
+                                            {% if item.down %}
+                                                {{ item.down }} Mbit/s
+                                            {% else %}
+                                                <span class="text-gray-400">?</span>
+                                            {% endif %}
+                                            <span class="text-gray-400 text-xs">(Bedarf {{ item.required_down }})</span>
+                                        </span>
+
+                                        <span class="mx-2 text-gray-300">|</span>
+
+                                        <!-- Ampel Up -->
+                                        {% if item.status_up == "green" %}
+                                            <span class="text-green-700 font-semibold">●</span>
+                                        {% elif item.status_up == "yellow" %}
+                                            <span class="text-yellow-600 font-semibold">●</span>
+                                        {% elif item.status_up == "red" %}
+                                            <span class="text-red-700 font-semibold">●</span>
+                                        {% else %}
+                                            <span class="text-gray-400 font-semibold">●</span>
+                                        {% endif %}
+                                        <span class="text-gray-700">
+                                            Up:
+                                            {% if item.up %}
+                                                {{ item.up }} Mbit/s
+                                            {% else %}
+                                                <span class="text-gray-400">?</span>
+                                            {% endif %}
+                                            <span class="text-gray-400 text-xs">(Bedarf {{ item.required_up }})</span>
+                                        </span>
                                     </li>
+                                    {% endwith %}
                                 {% endfor %}
                             </ul>
                         {% else %}
@@ -112,6 +149,7 @@
                         {% endif %}
                     </td>
                 </tr>
+                {% endwith %}
             {% empty %}
                 <tr>
                     <td colspan="7" class="px-4 py-4 text-center text-gray-500">
