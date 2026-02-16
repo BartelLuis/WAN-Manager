@@ -21,6 +21,30 @@ urlpatterns = [
     path("leitungen/<int:pk>/", views.wanleitung_detail, name="wanleitung_detail"),
     path("leitungen/<int:pk>/bearbeiten/", views.wanleitung_update, name="wanleitung_update"),
 
+    path("beauftragungen/", views.beauftragung_list, name="beauftragung_list"),
+    path("beauftragungen/neu/", views.beauftragung_create, name="beauftragung_create"),
+    path("beauftragungen/<int:pk>/", views.beauftragung_detail, name="beauftragung_detail"),
+    path("beauftragungen/<int:pk>/bearbeiten/", views.beauftragung_update, name="beauftragung_update"),
+
+    path("provider/", views.provider_list, name="provider_list"),
+    path("provider/neu/", views.provider_create, name="provider_create"),
+    path("provider/<int:pk>/", views.provider_detail, name="provider_detail"),
+    path("provider/<int:pk>/bearbeiten/", views.provider_update, name="provider_update"),
+    path("provider-optionen/", views.provider_option_list, name="provider_option_list"),
+    path("provider-optionen/neu/", views.provider_option_create, name="provider_option_create"),
+    path("provider-optionen/<int:pk>/bearbeiten/", views.provider_option_update, name="provider_option_update"),
+
+    path("tarife/", views.tarif_list, name="tarif_list"),
+    path("tarife/neu/", views.tarif_create, name="tarif_create"),
+    path("tarife/<int:pk>/", views.tarif_detail, name="tarif_detail"),
+    path("tarife/<int:pk>/bearbeiten/", views.tarif_update, name="tarif_update"),
+
+    path(
+        "beauftragungen/<int:beauftragung_pk>/provider/<int:provider_pk>/",
+        views.beauftragung_provider_kontext_update,
+        name="beauftragung_provider_kontext_update",
+    ),
+
     path("vertraege/", views.vertrag_list, name="vertrag_list"),
     path("vertraege/neu/", views.vertrag_create, name="vertrag_create"),
     path("vertraege/<int:pk>/", views.vertrag_detail, name="vertrag_detail"),

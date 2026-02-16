@@ -1,4 +1,5 @@
 from decimal import Decimal
+from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import render, get_object_or_404, redirect
@@ -6,6 +7,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import (
     Count,
     Sum,
+    Q,
     OuterRef,
     Subquery,
     IntegerField,
@@ -15,13 +17,26 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 
-from .models import Verwaltung, Standort, WanLeitung, Vertrag, Provider, Tarif
+from .models import (
+    Verwaltung,
+    Standort,
+    WanLeitung,
+    WanBeauftragung,
+    WanBeauftragungProviderKontext,
+    Vertrag,
+    Provider,
+    ProviderZusatzoption,
+    Tarif,
+)
 from .forms import (
     StandortForm,
     VerwaltungForm,
     VertragForm,
     WanLeitungForm,
+    WanBeauftragungForm,
+    WanBeauftragungProviderKontextForm,
     ProviderForm,
+    ProviderZusatzoptionForm,
     TarifForm,
 )
 
@@ -52,10 +67,37 @@ def is_super_or_net_admin(user) -> bool:
     )
 
 
+def can_manage_beauftragung(user) -> bool:
+    return (
+        is_super_or_net_admin(user)
+        or user_in_group(user, "IT-BEAUFTRAGTER")
+        or user_in_group(user, "EINKAEUFER")
+        or user_in_group(user, "EINKAUFER")
+    )
+
+
 def _verwaltungen_queryset_for_user(user):
     if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
         return Verwaltung.objects.filter(id=user.profile.verwaltung.id)
     return Verwaltung.objects.all()
+
+
+def _sync_provider_kontexte(beauftragung):
+    provider_ids = set(beauftragung.angefragte_provider.values_list("id", flat=True))
+    existing = {
+        k.provider_id: k
+        for k in WanBeauftragungProviderKontext.objects.filter(beauftragung=beauftragung)
+    }
+
+    for provider_id in provider_ids - set(existing.keys()):
+        WanBeauftragungProviderKontext.objects.create(
+            beauftragung=beauftragung,
+            provider_id=provider_id,
+        )
+
+    WanBeauftragungProviderKontext.objects.filter(
+        beauftragung=beauftragung
+    ).exclude(provider_id__in=provider_ids).delete()
 
 
 def _annotate_verwaltung_counts_and_sums(qs):
@@ -260,6 +302,7 @@ def provider_detail(request, pk):
     provider = get_object_or_404(Provider, pk=pk)
 
     tarife = provider.tarife.all().order_by("name")
+    optionen = provider.zusatzoptionen.all().order_by("name")
     leitungen = provider.leitungen.select_related("standort", "standort__verwaltung", "vertrag")
     vertraege = provider.vertraege.select_related("verwaltung")
 
@@ -269,6 +312,7 @@ def provider_detail(request, pk):
         {
             "provider": provider,
             "tarife": tarife,
+            "optionen": optionen,
             "leitungen": leitungen,
             "vertraege": vertraege,
             "can_edit": is_super_or_net_admin(user),
@@ -295,13 +339,16 @@ def tarif_list(request):
 @login_required
 @user_passes_test(is_super_or_net_admin)
 def tarif_create(request):
+    provider_id = request.GET.get("provider")
+    initial = {"provider": provider_id} if provider_id else None
+
     if request.method == "POST":
         form = TarifForm(request.POST)
         if form.is_valid():
             tarif = form.save()
             return redirect("core:tarif_detail", pk=tarif.pk)
     else:
-        form = TarifForm()
+        form = TarifForm(initial=initial)
 
     return render(request, "core/tarif_form.html", {"form": form})
 
@@ -548,6 +595,242 @@ def wanleitung_detail(request, pk):
         request,
         "core/wanleitung_detail.html",
         {"leitung": leitung, "can_edit": is_super_or_net_admin(user)},
+    )
+
+
+# ---------------------------- Beauftragungen ----------------------------
+
+
+@login_required
+def beauftragung_list(request):
+    user = request.user
+
+    beauftragungen = WanBeauftragung.objects.select_related(
+        "standort",
+        "standort__verwaltung",
+        "bestehende_leitung",
+        "erstellt_von",
+    ).prefetch_related("angefragte_provider").annotate(provider_count=Count("angefragte_provider", distinct=True))
+
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+        beauftragungen = beauftragungen.filter(standort__verwaltung=user.profile.verwaltung)
+
+    search = request.GET.get("q")
+    if search:
+        beauftragungen = beauftragungen.filter(
+            Q(titel__icontains=search)
+            | Q(ticket_nummer__icontains=search)
+            | Q(standort__name__icontains=search)
+            | Q(standort__standort_code__icontains=search)
+        )
+
+    return render(
+        request,
+        "core/beauftragung_list.html",
+        {
+            "beauftragungen": beauftragungen,
+            "search": search,
+            "can_create_beauftragung": can_manage_beauftragung(user),
+        },
+    )
+
+
+@login_required
+def provider_option_list(request):
+    optionen = ProviderZusatzoption.objects.select_related("provider").order_by("provider__name", "name")
+    provider_id = request.GET.get("provider")
+    if provider_id:
+        optionen = optionen.filter(provider_id=provider_id)
+
+    providers = Provider.objects.order_by("name")
+    return render(
+        request,
+        "core/provider_option_list.html",
+        {
+            "optionen": optionen,
+            "providers": providers,
+            "selected_provider_id": provider_id,
+            "can_create_option": is_super_or_net_admin(request.user),
+        },
+    )
+
+
+@login_required
+@user_passes_test(is_super_or_net_admin)
+def provider_option_create(request):
+    provider_id = request.GET.get("provider")
+    initial = {"provider": provider_id} if provider_id else None
+
+    if request.method == "POST":
+        form = ProviderZusatzoptionForm(request.POST)
+        if form.is_valid():
+            option = form.save()
+            return redirect("core:provider_detail", pk=option.provider_id)
+    else:
+        form = ProviderZusatzoptionForm(initial=initial)
+
+    return render(request, "core/provider_option_form.html", {"form": form})
+
+
+@login_required
+@user_passes_test(is_super_or_net_admin)
+def provider_option_update(request, pk):
+    option = get_object_or_404(ProviderZusatzoption.objects.select_related("provider"), pk=pk)
+
+    if request.method == "POST":
+        form = ProviderZusatzoptionForm(request.POST, instance=option)
+        if form.is_valid():
+            option = form.save()
+            return redirect("core:provider_detail", pk=option.provider_id)
+    else:
+        form = ProviderZusatzoptionForm(instance=option)
+
+    return render(
+        request,
+        "core/provider_option_form.html",
+        {"form": form, "is_edit": True, "option": option},
+    )
+
+
+@login_required
+@user_passes_test(can_manage_beauftragung)
+def beauftragung_create(request):
+    user = request.user
+
+    if request.method == "POST":
+        form = WanBeauftragungForm(request.POST, user=user)
+        if form.is_valid():
+            beauftragung = form.save(commit=False)
+            if not beauftragung.erstellt_von_id:
+                beauftragung.erstellt_von = user
+            beauftragung.save()
+            form.save_m2m()
+            _sync_provider_kontexte(beauftragung)
+            return redirect("core:beauftragung_detail", pk=beauftragung.pk)
+    else:
+        form = WanBeauftragungForm(user=user)
+
+    return render(request, "core/beauftragung_form.html", {"form": form})
+
+
+@login_required
+@user_passes_test(can_manage_beauftragung)
+def beauftragung_update(request, pk):
+    user = request.user
+    beauftragung = get_object_or_404(
+        WanBeauftragung.objects.select_related("standort", "standort__verwaltung"),
+        pk=pk,
+    )
+
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+        if beauftragung.standort.verwaltung_id != user.profile.verwaltung_id:
+            return render(request, "core/forbidden.html", status=403)
+
+    if request.method == "POST":
+        form = WanBeauftragungForm(request.POST, instance=beauftragung, user=user)
+        if form.is_valid():
+            beauftragung = form.save(commit=False)
+            if not beauftragung.erstellt_von_id:
+                beauftragung.erstellt_von = user
+            beauftragung.save()
+            form.save_m2m()
+            _sync_provider_kontexte(beauftragung)
+            return redirect("core:beauftragung_detail", pk=beauftragung.pk)
+    else:
+        form = WanBeauftragungForm(instance=beauftragung, user=user)
+
+    return render(
+        request,
+        "core/beauftragung_form.html",
+        {"form": form, "is_edit": True, "beauftragung": beauftragung},
+    )
+
+
+@login_required
+def beauftragung_detail(request, pk):
+    user = request.user
+    beauftragung = get_object_or_404(
+        WanBeauftragung.objects.select_related(
+            "standort",
+            "standort__verwaltung",
+            "bestehende_leitung",
+            "erstellt_von",
+        ).prefetch_related(
+            "angefragte_provider",
+            Prefetch(
+                "provider_kontexte",
+                queryset=WanBeauftragungProviderKontext.objects.select_related("provider", "tarif").prefetch_related(
+                    "zusatzoptionen"
+                ),
+            ),
+        ),
+        pk=pk,
+    )
+
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+        if beauftragung.standort.verwaltung_id != user.profile.verwaltung_id:
+            return render(request, "core/forbidden.html", status=403)
+
+    provider_anfragen = []
+    for kontext in beauftragung.provider_kontexte.all():
+        provider = kontext.provider
+        subject = beauftragung.render_anfrage_betreff(provider)
+        body = kontext.render_anfrage_text()
+        provider_anfragen.append(
+            {
+                "kontext": kontext,
+                "provider": provider,
+                "subject": subject,
+                "body": body,
+                "mailto_link": (
+                    f"mailto:{provider.kontakt_mail or ''}"
+                    f"?subject={quote(subject)}&body={quote(body)}"
+                ),
+            }
+        )
+
+    return render(
+        request,
+        "core/beauftragung_detail.html",
+        {
+            "beauftragung": beauftragung,
+            "can_edit": can_manage_beauftragung(user),
+            "provider_anfragen": provider_anfragen,
+        },
+    )
+
+
+@login_required
+@user_passes_test(can_manage_beauftragung)
+def beauftragung_provider_kontext_update(request, beauftragung_pk, provider_pk):
+    user = request.user
+    beauftragung = get_object_or_404(
+        WanBeauftragung.objects.select_related("standort", "standort__verwaltung"),
+        pk=beauftragung_pk,
+    )
+
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+        if beauftragung.standort.verwaltung_id != user.profile.verwaltung_id:
+            return render(request, "core/forbidden.html", status=403)
+
+    kontext = get_object_or_404(
+        WanBeauftragungProviderKontext.objects.select_related("beauftragung", "provider"),
+        beauftragung_id=beauftragung_pk,
+        provider_id=provider_pk,
+    )
+
+    if request.method == "POST":
+        form = WanBeauftragungProviderKontextForm(request.POST, instance=kontext)
+        if form.is_valid():
+            form.save()
+            return redirect("core:beauftragung_detail", pk=beauftragung_pk)
+    else:
+        form = WanBeauftragungProviderKontextForm(instance=kontext)
+
+    return render(
+        request,
+        "core/beauftragung_provider_kontext_form.html",
+        {"form": form, "beauftragung": beauftragung, "provider": kontext.provider, "kontext": kontext},
     )
 
 

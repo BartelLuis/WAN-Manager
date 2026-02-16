@@ -1,4 +1,5 @@
 import re
+from collections import defaultdict
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -30,11 +31,21 @@ class Verwaltung(models.Model):
 
 class Provider(models.Model):
     name = models.CharField(max_length=255)
-    kuerzel = models.CharField(max_length=50, blank=True, null=True)
+    kuerzel = models.CharField("Kürzel", max_length=50, blank=True, null=True)
     kundennummer = models.CharField(max_length=100, blank=True, null=True)
-    kontakt_name = models.CharField(max_length=255, blank=True, null=True)
-    kontakt_mail = models.EmailField(blank=True, null=True)
-    kontakt_tel = models.CharField(max_length=50, blank=True, null=True)
+    kontakt_name = models.CharField("Kontakt Name", max_length=255, blank=True, null=True)
+    kontakt_mail = models.EmailField("Kontakt E-Mail", blank=True, null=True)
+    kontakt_tel = models.CharField("Kontakt Telefon", max_length=50, blank=True, null=True)
+    anfrage_template_text = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Anfrage-Template (Text)",
+        help_text=(
+            "Platzhalter: {anbieter_name}, {anbieter_kuerzel}, {standort_name}, {standort_code}, "
+            "{standort_adresse_komplett}, {verwaltung_name}, {bedarf_down_mbit}, {bedarf_up_mbit}, "
+            "{umsetzung_bis}, {titel}, {ticket_nummer}, {tarif_name}, {zusatzoptionen}"
+        ),
+    )
     bemerkung = models.TextField(blank=True, null=True)
 
     class Meta:
@@ -44,6 +55,21 @@ class Provider(models.Model):
         if self.kuerzel:
             return f"{self.kuerzel} - {self.name}"
         return self.name
+
+
+class ProviderZusatzoption(models.Model):
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="zusatzoptionen")
+    name = models.CharField(max_length=255)
+    beschreibung = models.TextField(blank=True, null=True)
+    kosten_monat_netto = models.DecimalField("Kosten p. Monat (Netto)", max_digits=10, decimal_places=2, blank=True, null=True)
+    kosten_einmalig_netto = models.DecimalField("Kosten einmalig (Netto)", max_digits=10, decimal_places=2, blank=True, null=True)
+    aktiv = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["provider__name", "name"]
+
+    def __str__(self):
+        return f"{self.provider} - {self.name}"
 
 
 class Tarif(models.Model):
@@ -98,7 +124,23 @@ class Standort(models.Model):
 
         verw_kz = (self.verwaltung.kuerzel or "").upper()
 
-        ort_clean = "".join(self.adresse_ort.split())
+        def _normalize_code_text(value: str) -> str:
+            if not value:
+                return ""
+            replacements = {
+                "ä": "ae",
+                "ö": "oe",
+                "ü": "ue",
+                "ß": "ss",
+                "Ä": "Ae",
+                "Ö": "Oe",
+                "Ü": "Ue",
+            }
+            for src, dst in replacements.items():
+                value = value.replace(src, dst)
+            return value
+
+        ort_clean = "".join(_normalize_code_text(self.adresse_ort).split())
         ort_part = ort_clean[:3].upper()
 
         street_full = (self.adresse_strasse or "").strip()
@@ -113,7 +155,7 @@ class Standort(models.Model):
             street_name = " ".join(parts[:-1])
             number_raw = parts[-1]
 
-        street_clean = "".join(street_name.split())
+        street_clean = "".join(_normalize_code_text(street_name).split())
         street_part = street_clean[:3].upper()
 
         hausnummer_part = ""
@@ -208,6 +250,157 @@ class WanLeitung(models.Model):
         return f"{self.standort} - {label} ({self.bandbreite_down_mbit or '?'} Mbit)"
 
 
+class WanBeauftragung(models.Model):
+    STATUS_OFFEN = "offen"
+    STATUS_IN_PRUEFUNG = "in_pruefung"
+    STATUS_BEAUFTRAGT = "beauftragt"
+    STATUS_UMGESETZT = "umgesetzt"
+    STATUS_ABGELEHNT = "abgelehnt"
+    STATUS_STORNIERT = "storniert"
+
+    STATUS_CHOICES = [
+        (STATUS_OFFEN, "Offen"),
+        (STATUS_IN_PRUEFUNG, "In Pruefung"),
+        (STATUS_BEAUFTRAGT, "Beauftragt"),
+        (STATUS_UMGESETZT, "Umgesetzt"),
+        (STATUS_ABGELEHNT, "Abgelehnt"),
+        (STATUS_STORNIERT, "Storniert"),
+    ]
+
+    PRIO_NIEDRIG = "niedrig"
+    PRIO_NORMAL = "normal"
+    PRIO_HOCH = "hoch"
+    PRIO_KRITISCH = "kritisch"
+
+    PRIORITAET_CHOICES = [
+        (PRIO_NIEDRIG, "Niedrig"),
+        (PRIO_NORMAL, "Normal"),
+        (PRIO_HOCH, "Hoch"),
+        (PRIO_KRITISCH, "Kritisch"),
+    ]
+
+    standort = models.ForeignKey(Standort, on_delete=models.CASCADE, related_name="beauftragungen")
+    bestehende_leitung = models.ForeignKey(
+        WanLeitung,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="beauftragungen",
+    )
+    angefragte_provider = models.ManyToManyField(
+        Provider,
+        blank=True,
+        related_name="beauftragungen",
+    )
+    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+
+    titel = models.CharField(max_length=255)
+    ticket_nummer = models.CharField(max_length=100, blank=True, null=True)
+    prioritaet = models.CharField(max_length=20, choices=PRIORITAET_CHOICES, default=PRIO_NORMAL)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OFFEN)
+
+    bedarf_down_mbit = models.PositiveIntegerField("Bedarf Downlink (Mbit/s)", blank=True, null=True)
+    bedarf_up_mbit = models.PositiveIntegerField("Bedarf Uplink (Mbit/s)", blank=True, null=True)
+    umsetzung_bis = models.DateField(blank=True, null=True)
+    angefragt_am = models.DateField(auto_now_add=True)
+
+    kostenrahmen_monat_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    kostenrahmen_einmalig_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+    begruendung = models.TextField(blank=True, null=True)
+    bemerkung = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-angefragt_am", "-id"]
+
+    def __str__(self):
+        return f"{self.standort} - {self.titel}"
+
+    def _template_context(self, provider=None):
+        adresse_komplett = ""
+        if self.standort_id:
+            teile = [
+                (self.standort.adresse_strasse or "").strip(),
+                " ".join([p for p in [(self.standort.adresse_plz or "").strip(), (self.standort.adresse_ort or "").strip()] if p]).strip(),
+            ]
+            adresse_komplett = ", ".join([t for t in teile if t])
+
+        return {
+            "anbieter_name": provider.name if provider else "",
+            "anbieter_kuerzel": (provider.kuerzel or "") if provider else "",
+            "standort_name": self.standort.name if self.standort_id else "",
+            "standort_code": (self.standort.standort_code or "") if self.standort_id else "",
+            "standort_adresse_komplett": adresse_komplett,
+            "verwaltung_name": self.standort.verwaltung.name if self.standort_id else "",
+            "titel": self.titel or "",
+            "ticket_nummer": self.ticket_nummer or "",
+            "bedarf_down_mbit": str(self.bedarf_down_mbit or ""),
+            "bedarf_up_mbit": str(self.bedarf_up_mbit or ""),
+            "umsetzung_bis": self.umsetzung_bis.strftime("%d.%m.%Y") if self.umsetzung_bis else "",
+        }
+
+    def render_anfrage_betreff(self, provider=None):
+        standort_code = (self.standort.standort_code or "").strip() if self.standort_id else ""
+        return f"WAN-Anbindung {standort_code or '-'}"
+
+    def get_anfrage_template_text(self, provider=None):
+        template = ""
+        if provider and provider.anfrage_template_text:
+            template = (provider.anfrage_template_text or "").strip()
+
+        if not template:
+            settings_obj = GlobalSettings.objects.filter(pk=1).first()
+            template = (settings_obj.anfrage_template_text or "").strip() if settings_obj else ""
+
+        if not template:
+            template = (
+                "Guten Tag,\n\n"
+                "wir bitten um ein Angebot fuer folgenden WAN-Bedarf:\n"
+                "- Standort: {standort_name} ({standort_code})\n"
+                "- Verwaltung: {verwaltung_name}\n"
+                "- Bedarf: {bedarf_down_mbit}/{bedarf_up_mbit} Mbit/s\n"
+                "- Umsetzung bis: {umsetzung_bis}\n"
+                "- Referenz: {titel} {ticket_nummer}\n\n"
+                "Vielen Dank."
+            )
+        return template
+
+    def render_anfrage_text(self, provider=None):
+        template = self.get_anfrage_template_text(provider)
+        try:
+            return template.format_map(defaultdict(str, self._template_context(provider)))
+        except (KeyError, ValueError):
+            return template
+
+
+class WanBeauftragungProviderKontext(models.Model):
+    beauftragung = models.ForeignKey(WanBeauftragung, on_delete=models.CASCADE, related_name="provider_kontexte")
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="beauftragungs_kontexte")
+    tarif = models.ForeignKey(Tarif, on_delete=models.SET_NULL, blank=True, null=True, related_name="beauftragungs_kontexte")
+    zusatzoptionen = models.ManyToManyField(ProviderZusatzoption, blank=True, related_name="beauftragungs_kontexte")
+    template_override_text = models.TextField(blank=True, null=True)
+    anfrage_notiz = models.TextField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("beauftragung", "provider")
+        ordering = ["provider__name"]
+
+    def __str__(self):
+        return f"{self.beauftragung} - {self.provider}"
+
+    def render_anfrage_text(self):
+        template = (self.template_override_text or "").strip()
+        if not template:
+            template = self.beauftragung.get_anfrage_template_text(self.provider)
+        context = defaultdict(str, self.beauftragung._template_context(self.provider))
+        context["tarif_name"] = self.tarif.name if self.tarif_id else ""
+        context["zusatzoptionen"] = ", ".join(self.zusatzoptionen.values_list("name", flat=True))
+        try:
+            return template.format_map(context)
+        except (KeyError, ValueError):
+            return template
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     verwaltung = models.ForeignKey(Verwaltung, on_delete=models.SET_NULL, blank=True, null=True)
@@ -223,6 +416,16 @@ class GlobalSettings(models.Model):
     mbit_pro_arbeitsplatz = models.PositiveIntegerField(
         default=10,
         verbose_name="Mbit/s pro Arbeitsplatz"
+    )
+    anfrage_template_text = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="WAN-Anfrage Template (Text)",
+        help_text=(
+            "Platzhalter: {anbieter_name}, {anbieter_kuerzel}, {standort_name}, {standort_code}, "
+            "{standort_adresse_komplett}, {verwaltung_name}, {bedarf_down_mbit}, {bedarf_up_mbit}, "
+            "{umsetzung_bis}, {titel}, {ticket_nummer}, {tarif_name}, {zusatzoptionen}"
+        ),
     )
 
     def save(self, *args, **kwargs):

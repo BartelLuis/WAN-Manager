@@ -5,7 +5,10 @@ from .models import (
     Verwaltung,
     Vertrag,
     WanLeitung,
+    WanBeauftragung,
+    WanBeauftragungProviderKontext,
     Provider,
+    ProviderZusatzoption,
     Tarif,
 )
 
@@ -42,7 +45,29 @@ class VerwaltungForm(forms.ModelForm):
 class ProviderForm(forms.ModelForm):
     class Meta:
         model = Provider
-        fields = ["name", "kuerzel", "kundennummer", "kontakt_name", "kontakt_mail", "kontakt_tel", "bemerkung"]
+        fields = [
+            "name",
+            "kuerzel",
+            "kundennummer",
+            "kontakt_name",
+            "kontakt_mail",
+            "kontakt_tel",
+            "anfrage_template_text",
+            "bemerkung",
+        ]
+
+
+class ProviderZusatzoptionForm(forms.ModelForm):
+    class Meta:
+        model = ProviderZusatzoption
+        fields = [
+            "provider",
+            "name",
+            "beschreibung",
+            "kosten_monat_netto",
+            "kosten_einmalig_netto",
+            "aktiv",
+        ]
 
 
 class TarifForm(forms.ModelForm):
@@ -191,5 +216,102 @@ class WanLeitungForm(forms.ModelForm):
 
         elif provider_ref and not provider_text:
             cleaned["provider"] = provider_ref.kuerzel or provider_ref.name
+
+        return cleaned
+
+
+class WanBeauftragungForm(forms.ModelForm):
+    class Meta:
+        model = WanBeauftragung
+        fields = [
+            "standort",
+            "bestehende_leitung",
+            "angefragte_provider",
+            "titel",
+            "ticket_nummer",
+            "prioritaet",
+            "status",
+            "bedarf_down_mbit",
+            "bedarf_up_mbit",
+            "umsetzung_bis",
+            "kostenrahmen_monat_netto",
+            "kostenrahmen_einmalig_netto",
+            "begruendung",
+            "bemerkung",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop("user", None)
+        super().__init__(*args, **kwargs)
+
+        standorte = Standort.objects.select_related("verwaltung").order_by("standort_code")
+        leitungen = WanLeitung.objects.select_related("standort", "standort__verwaltung").order_by(
+            "standort__standort_code", "bezeichnung", "provider"
+        )
+
+        if user and hasattr(user, "profile") and getattr(user.profile, "verwaltung_id", None):
+            standorte = standorte.filter(verwaltung_id=user.profile.verwaltung_id)
+            leitungen = leitungen.filter(standort__verwaltung_id=user.profile.verwaltung_id)
+
+            if not getattr(self.instance, "standort_id", None):
+                first_standort = standorte.first()
+                if first_standort:
+                    self.initial.setdefault("standort", first_standort.pk)
+
+        self.fields["standort"].queryset = standorte
+        self.fields["bestehende_leitung"].queryset = leitungen
+        self.fields["angefragte_provider"].queryset = Provider.objects.order_by("name")
+        self.fields["angefragte_provider"].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        standort = cleaned.get("standort")
+        bestehende_leitung = cleaned.get("bestehende_leitung")
+
+        if bestehende_leitung and standort and bestehende_leitung.standort_id != standort.id:
+            self.add_error(
+                "bestehende_leitung",
+                "Die bestehende Leitung muss zum ausgewaehlten Standort gehoeren.",
+            )
+
+        return cleaned
+
+
+class WanBeauftragungProviderKontextForm(forms.ModelForm):
+    class Meta:
+        model = WanBeauftragungProviderKontext
+        fields = [
+            "tarif",
+            "zusatzoptionen",
+            "template_override_text",
+            "anfrage_notiz",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        provider = getattr(self.instance, "provider", None)
+        if provider:
+            self.fields["tarif"].queryset = Tarif.objects.filter(provider=provider).order_by("name")
+            self.fields["zusatzoptionen"].queryset = ProviderZusatzoption.objects.filter(
+                provider=provider, aktiv=True
+            ).order_by("name")
+        else:
+            self.fields["tarif"].queryset = Tarif.objects.none()
+            self.fields["zusatzoptionen"].queryset = ProviderZusatzoption.objects.none()
+        self.fields["zusatzoptionen"].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        provider = getattr(self.instance, "provider", None)
+        tarif = cleaned.get("tarif")
+        zusatzoptionen = cleaned.get("zusatzoptionen")
+
+        if provider and tarif and tarif.provider_id != provider.id:
+            self.add_error("tarif", "Der gewaehlte Tarif gehoert nicht zum Provider.")
+
+        if provider and zusatzoptionen:
+            wrong = [z.name for z in zusatzoptionen if z.provider_id != provider.id]
+            if wrong:
+                self.add_error("zusatzoptionen", "Mindestens eine Zusatzoption gehoert nicht zum Provider.")
 
         return cleaned

@@ -1,0 +1,53 @@
+{% extends "core/base.html" %}
+
+{% block title %}Provider{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-semibold">Provider</h1>
+
+    {% if can_create_provider %}
+        <a href="{% url 'core:provider_create' %}"
+           class="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
+            + Neuer Provider
+        </a>
+    {% endif %}
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Provider</th>
+                <th class="px-4 py-3 text-left">Tarife</th>
+                <th class="px-4 py-3 text-left">Leitungen</th>
+                <th class="px-4 py-3 text-left">Verträge</th>
+                <th class="px-4 py-3 text-left">Template</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for p in providers %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:provider_detail' p.id %}" class="text-brand hover:underline">
+                            {{ p }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2">{{ p.tarif_count }}</td>
+                    <td class="px-4 py-2">{{ p.leitung_count }}</td>
+                    <td class="px-4 py-2">{{ p.vertrag_count }}</td>
+                    <td class="px-4 py-2">
+                        {% if p.anfrage_template_text %}Ja{% else %}-{% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-4 text-center text-gray-500">
+                        Keine Provider vorhanden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

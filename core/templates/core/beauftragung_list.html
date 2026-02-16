@@ -1,0 +1,78 @@
+{% extends "core/base.html" %}
+
+{% block title %}WAN-Beauftragungen{% endblock %}
+
+{% block content %}
+<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+    <h1 class="text-2xl font-semibold">WAN-Beauftragungen</h1>
+
+    <div class="flex items-center gap-3">
+        <form method="get" class="flex items-center gap-2">
+            <input type="text"
+                   name="q"
+                   value="{{ search|default:'' }}"
+                   placeholder="Suche nach Titel, Ticket oder Standort"
+                   class="w-72" />
+            <button type="submit"
+                    class="bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm hover:bg-gray-300">
+                Suchen
+            </button>
+        </form>
+
+        {% if can_create_beauftragung %}
+            <a href="{% url 'core:beauftragung_create' %}"
+               class="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
+                + Neue Beauftragung
+            </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Titel</th>
+                <th class="px-4 py-3 text-left">Standort</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-left">Priorität</th>
+                <th class="px-4 py-3 text-left">Provider</th>
+                <th class="px-4 py-3 text-left">Angefragt</th>
+                <th class="px-4 py-3 text-left">Umsetzung bis</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for b in beauftragungen %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:beauftragung_detail' b.id %}"
+                           class="text-brand hover:underline">
+                            {{ b.titel }}
+                        </a>
+                        {% if b.ticket_nummer %}
+                            <span class="block text-xs text-gray-500">Ticket: {{ b.ticket_nummer }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:standort_detail' b.standort.id %}" class="hover:underline">
+                            {{ b.standort.name }}
+                        </a>
+                        <span class="block text-xs text-gray-500">{{ b.standort.verwaltung.name }}</span>
+                    </td>
+                    <td class="px-4 py-2">{{ b.get_status_display }}</td>
+                    <td class="px-4 py-2">{{ b.get_prioritaet_display }}</td>
+                    <td class="px-4 py-2">{{ b.provider_count }}</td>
+                    <td class="px-4 py-2">{{ b.angefragt_am|date:"d.m.Y" }}</td>
+                    <td class="px-4 py-2">{{ b.umsetzung_bis|date:"d.m.Y"|default:"-" }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="7" class="px-4 py-4 text-center text-gray-500">
+                        Keine WAN-Beauftragungen vorhanden.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "core/base.html" %}
+
+{% block title %}Provider-Zusatzoptionen{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-semibold">Provider-Zusatzoptionen</h1>
+    {% if can_create_option %}
+        <a href="{% url 'core:provider_option_create' %}"
+           class="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
+            + Neue Option
+        </a>
+    {% endif %}
+</div>
+
+<div class="bg-white shadow rounded-lg p-4 mb-4">
+    <form method="get" class="flex items-center gap-3">
+        <label for="provider" class="text-sm font-semibold">Provider:</label>
+        <select id="provider" name="provider" class="max-w-sm">
+            <option value="">Alle</option>
+            {% for p in providers %}
+                <option value="{{ p.id }}" {% if selected_provider_id == p.id|stringformat:"s" %}selected{% endif %}>
+                    {{ p }}
+                </option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm hover:bg-gray-300">Filtern</button>
+    </form>
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full">
+        <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left">Provider</th>
+                <th class="px-4 py-3 text-left">Option</th>
+                <th class="px-4 py-3 text-left">Kosten/Monat</th>
+                <th class="px-4 py-3 text-left">Einmalig</th>
+                <th class="px-4 py-3 text-left">Aktiv</th>
+            </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100">
+            {% for o in optionen %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:provider_detail' o.provider.id %}" class="hover:underline">{{ o.provider }}</a>
+                    </td>
+                    <td class="px-4 py-2">
+                        <a href="{% url 'core:provider_option_update' o.id %}" class="text-brand hover:underline">{{ o.name }}</a>
+                    </td>
+                    <td class="px-4 py-2">{{ o.kosten_monat_netto|default:"-" }}</td>
+                    <td class="px-4 py-2">{{ o.kosten_einmalig_netto|default:"-" }}</td>
+                    <td class="px-4 py-2">{% if o.aktiv %}Ja{% else %}Nein{% endif %}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-4 text-center text-gray-500">Keine Zusatzoptionen vorhanden.</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

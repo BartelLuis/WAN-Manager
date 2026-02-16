@@ -1,0 +1,94 @@
+{% extends "core/base.html" %}
+
+{% block title %}Provider{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-semibold">Provider</h1>
+
+    {% if can_edit %}
+        <a href="{% url 'core:provider_update' provider.id %}"
+           class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+            Bearbeiten
+        </a>
+    {% endif %}
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Stammdaten</h2>
+        <dl class="text-sm space-y-2">
+            <div><dt class="font-semibold text-gray-600">Name</dt><dd>{{ provider.name }}</dd></div>
+            <div><dt class="font-semibold text-gray-600">Kürzel</dt><dd>{{ provider.kuerzel|default:"-" }}</dd></div>
+            <div><dt class="font-semibold text-gray-600">Kundennummer</dt><dd>{{ provider.kundennummer|default:"-" }}</dd></div>
+            <div><dt class="font-semibold text-gray-600">Kontakt</dt><dd>{{ provider.kontakt_name|default:"-" }}</dd></div>
+            <div><dt class="font-semibold text-gray-600">E-Mail</dt><dd>{{ provider.kontakt_mail|default:"-" }}</dd></div>
+            <div><dt class="font-semibold text-gray-600">Telefon</dt><dd>{{ provider.kontakt_tel|default:"-" }}</dd></div>
+        </dl>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Anfrage-Template</h2>
+        {% if provider.anfrage_template_text %}
+            <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-3 whitespace-pre-wrap">{{ provider.anfrage_template_text }}</pre>
+        {% else %}
+            <p class="text-sm text-gray-500">Kein eigenes Template gesetzt (es wird das globale Template verwendet).</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6">
+    <div class="bg-white shadow rounded-lg p-4">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Tarife</h2>
+            {% if can_edit %}
+                <a href="{% url 'core:tarif_create' %}?provider={{ provider.id }}"
+                   class="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">
+                    + Tarif
+                </a>
+            {% endif %}
+        </div>
+        <ul class="text-sm space-y-1">
+            {% for t in tarife %}
+                <li>
+                    <a href="{% url 'core:tarif_detail' t.id %}" class="hover:underline">{{ t.name }}</a>
+                </li>
+            {% empty %}
+                <li class="text-gray-500">Keine Tarife.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-4">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Zusatzoptionen</h2>
+            {% if can_edit %}
+                <a href="{% url 'core:provider_option_create' %}?provider={{ provider.id }}"
+                   class="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">
+                    + Option
+                </a>
+            {% endif %}
+        </div>
+        <ul class="text-sm space-y-1 mb-6">
+            {% for option in optionen %}
+                <li>
+                    <a href="{% url 'core:provider_option_update' option.id %}" class="hover:underline">
+                        {{ option.name }}
+                    </a>
+                </li>
+            {% empty %}
+                <li class="text-gray-500">Keine Zusatzoptionen.</li>
+            {% endfor %}
+        </ul>
+
+        <h2 class="text-lg font-semibold mb-3">Verträge</h2>
+        <ul class="text-sm space-y-1">
+            {% for v in vertraege %}
+                <li>{{ v.verwaltung }} - {{ v.vertragsnummer }}</li>
+            {% empty %}
+                <li class="text-gray-500">Keine Verträge.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

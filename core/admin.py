@@ -7,8 +7,11 @@ from .models import (
     Standort,
     Vertrag,
     WanLeitung,
+    WanBeauftragung,
+    WanBeauftragungProviderKontext,
     UserProfile,
     Provider,
+    ProviderZusatzoption,
     Tarif,
     GlobalSettings,
 )
@@ -55,10 +58,33 @@ class WanLeitungAdmin(admin.ModelAdmin):
     )
 
 
+@admin.register(WanBeauftragung)
+class WanBeauftragungAdmin(admin.ModelAdmin):
+    list_display = ("titel", "standort", "status", "prioritaet", "angefragt_am", "umsetzung_bis", "erstellt_von")
+    list_filter = ("status", "prioritaet", "standort__verwaltung")
+    search_fields = ("titel", "ticket_nummer", "standort__name", "standort__standort_code")
+    filter_horizontal = ("angefragte_provider",)
+
+
+@admin.register(WanBeauftragungProviderKontext)
+class WanBeauftragungProviderKontextAdmin(admin.ModelAdmin):
+    list_display = ("beauftragung", "provider", "tarif")
+    list_filter = ("provider", "beauftragung__standort__verwaltung")
+    search_fields = ("beauftragung__titel", "provider__name", "provider__kuerzel")
+    filter_horizontal = ("zusatzoptionen",)
+
+
 @admin.register(Provider)
 class ProviderAdmin(admin.ModelAdmin):
     list_display = ("name", "kuerzel", "kundennummer", "kontakt_name")
     search_fields = ("name", "kuerzel", "kundennummer", "kontakt_name")
+
+
+@admin.register(ProviderZusatzoption)
+class ProviderZusatzoptionAdmin(admin.ModelAdmin):
+    list_display = ("name", "provider", "kosten_monat_netto", "kosten_einmalig_netto", "aktiv")
+    list_filter = ("provider", "aktiv")
+    search_fields = ("name", "beschreibung", "provider__name", "provider__kuerzel")
 
 
 @admin.register(Tarif)
@@ -83,6 +109,16 @@ class UserProfileInline(admin.StackedInline):
 
 class UserAdmin(BaseUserAdmin):
     inlines = [UserProfileInline]
+
+
+@admin.register(GlobalSettings)
+class GlobalSettingsAdmin(admin.ModelAdmin):
+    list_display = ("id", "mbit_pro_arbeitsplatz")
+
+    def has_add_permission(self, request):
+        if GlobalSettings.objects.exists():
+            return False
+        return super().has_add_permission(request)
 
 
 admin.site.unregister(User)

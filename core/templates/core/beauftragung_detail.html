@@ -1,0 +1,204 @@
+{% extends "core/base.html" %}
+
+{% block title %}WAN-Beauftragung{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-semibold">WAN-Beauftragung</h1>
+
+    {% if can_edit %}
+        <a href="{% url 'core:beauftragung_update' beauftragung.id %}"
+           class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+            Bearbeiten
+        </a>
+    {% endif %}
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Allgemein</h2>
+        <dl class="text-sm space-y-2">
+            <div>
+                <dt class="font-semibold text-gray-600">Titel</dt>
+                <dd>{{ beauftragung.titel }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Standort</dt>
+                <dd>
+                    <a href="{% url 'core:standort_detail' beauftragung.standort.id %}"
+                       class="text-brand hover:underline">
+                        {{ beauftragung.standort.name }}
+                    </a>
+                    <span class="block text-xs text-gray-500">{{ beauftragung.standort.verwaltung.name }}</span>
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Ticketnummer</dt>
+                <dd>{{ beauftragung.ticket_nummer|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Status</dt>
+                <dd>{{ beauftragung.get_status_display }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Priorität</dt>
+                <dd>{{ beauftragung.get_prioritaet_display }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Angelegt von</dt>
+                <dd>{{ beauftragung.erstellt_von|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Angefragt am</dt>
+                <dd>{{ beauftragung.angefragt_am|date:"d.m.Y" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Umsetzung bis</dt>
+                <dd>{{ beauftragung.umsetzung_bis|date:"d.m.Y"|default:"-" }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Technik & Kosten</h2>
+        <dl class="text-sm space-y-2">
+            <div>
+                <dt class="font-semibold text-gray-600">Bestehende Leitung</dt>
+                <dd>
+                    {% if beauftragung.bestehende_leitung %}
+                        <a href="{% url 'core:wanleitung_detail' beauftragung.bestehende_leitung.id %}"
+                           class="text-brand hover:underline">
+                            {{ beauftragung.bestehende_leitung }}
+                        </a>
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Bedarf Downlink</dt>
+                <dd>{{ beauftragung.bedarf_down_mbit|default:"-" }} Mbit/s</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Bedarf Uplink</dt>
+                <dd>{{ beauftragung.bedarf_up_mbit|default:"-" }} Mbit/s</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Kostenrahmen netto/Monat</dt>
+                <dd>
+                    {% if beauftragung.kostenrahmen_monat_netto %}
+                        {{ beauftragung.kostenrahmen_monat_netto }} EUR
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-gray-600">Kostenrahmen einmalig netto</dt>
+                <dd>
+                    {% if beauftragung.kostenrahmen_einmalig_netto %}
+                        {{ beauftragung.kostenrahmen_einmalig_netto }} EUR
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+            </div>
+        </dl>
+    </div>
+</div>
+
+<div class="bg-white shadow rounded-lg p-4">
+    <h2 class="text-lg font-semibold mb-3">Begründung & Notizen</h2>
+
+    <div class="mb-4">
+        <p class="text-xs font-semibold uppercase text-gray-500 mb-1">Begruendung</p>
+        {% if beauftragung.begruendung %}
+            <p class="text-sm text-gray-800 whitespace-pre-line">{{ beauftragung.begruendung }}</p>
+        {% else %}
+            <p class="text-sm text-gray-500">Keine Begründung hinterlegt.</p>
+        {% endif %}
+    </div>
+
+    <div>
+        <p class="text-xs font-semibold uppercase text-gray-500 mb-1">Bemerkung</p>
+        {% if beauftragung.bemerkung %}
+            <p class="text-sm text-gray-800 whitespace-pre-line">{{ beauftragung.bemerkung }}</p>
+        {% else %}
+            <p class="text-sm text-gray-500">Keine Bemerkung hinterlegt.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="bg-white shadow rounded-lg p-4 mt-6">
+    <h2 class="text-lg font-semibold mb-3">Provider-Anfragen</h2>
+
+    {% if provider_anfragen %}
+        <div class="space-y-4">
+            {% for anfrage in provider_anfragen %}
+                <div class="border border-gray-200 rounded p-3">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <div>
+                            <p class="font-semibold text-sm">{{ anfrage.provider.name }}</p>
+                            <p class="text-xs text-gray-500">
+                                {% if anfrage.provider.kontakt_mail %}
+                                    {{ anfrage.provider.kontakt_mail }}
+                                {% else %}
+                                    Keine E-Mail beim Provider hinterlegt
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="flex gap-2">
+                            {% if can_edit %}
+                                <a href="{% url 'core:beauftragung_provider_kontext_update' beauftragung.id anfrage.provider.id %}"
+                                   class="bg-blue-600 text-white px-3 py-2 rounded text-xs hover:bg-blue-700">
+                                    Unterkontext bearbeiten
+                                </a>
+                            {% endif %}
+                            <a href="{{ anfrage.mailto_link }}"
+                               class="bg-emerald-600 text-white px-3 py-2 rounded text-xs hover:bg-emerald-700">
+                                Anfrage per E-Mail oeffnen
+                            </a>
+                        </div>
+                    </div>
+
+                    <dl class="text-xs text-gray-700 grid md:grid-cols-2 gap-2 mb-2">
+                        <div>
+                            <dt class="font-semibold">Tarif</dt>
+                            <dd>
+                                {% if anfrage.kontext.tarif %}
+                                    {{ anfrage.kontext.tarif.name }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="font-semibold">Zusatzoptionen</dt>
+                            <dd>
+                                {% for opt in anfrage.kontext.zusatzoptionen.all %}
+                                    {{ opt.name }}{% if not forloop.last %}, {% endif %}
+                                {% empty %}
+                                    -
+                                {% endfor %}
+                            </dd>
+                        </div>
+                    </dl>
+
+                    <p class="text-xs uppercase text-gray-500 mb-1">Betreff</p>
+                    <p class="text-sm bg-gray-50 border border-gray-200 rounded p-2 mb-2">{{ anfrage.subject }}</p>
+
+                    <p class="text-xs uppercase text-gray-500 mb-1">Text</p>
+                    <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-2 whitespace-pre-wrap">{{ anfrage.body }}</pre>
+
+                    {% if anfrage.kontext.anfrage_notiz %}
+                        <p class="text-xs uppercase text-gray-500 mt-2 mb-1">Notiz</p>
+                        <p class="text-sm bg-gray-50 border border-gray-200 rounded p-2 whitespace-pre-wrap">{{ anfrage.kontext.anfrage_notiz }}</p>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-sm text-gray-500">Es wurden noch keine Provider fuer diese Beauftragung ausgewaehlt.</p>
+    {% endif %}
+</div>
+{% endblock %}
