@@ -181,10 +181,17 @@ class Migration(migrations.Migration):
             name='rechnungsempfaenger',
             field=models.CharField(blank=True, max_length=255, null=True, verbose_name='Rechnungsempfänger'),
         ),
-        migrations.AlterField(
-            model_name='verwaltung',
-            name='kuerzel',
-            field=models.CharField(blank=True, max_length=50, null=True, unique=True, verbose_name='VKZ'),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(_ensure_verwaltung_kuerzel_unique_if_missing, migrations.RunPython.noop),
+            ],
+            state_operations=[
+                migrations.AlterField(
+                    model_name='verwaltung',
+                    name='kuerzel',
+                    field=models.CharField(blank=True, max_length=50, null=True, unique=True, verbose_name='VKZ'),
+                ),
+            ],
         ),
         migrations.AlterField(
             model_name='wanleitung',
