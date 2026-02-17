@@ -206,9 +206,9 @@ class WanLeitungForm(forms.ModelForm):
             if not bezeichnung:
                 cleaned["bezeichnung"] = tarif_ref.name
 
-            if not down and tarif_ref.bandbreite_down_mbit is not None:
+            if down is None and tarif_ref.bandbreite_down_mbit is not None:
                 cleaned["bandbreite_down_mbit"] = tarif_ref.bandbreite_down_mbit
-            if not up and tarif_ref.bandbreite_up_mbit is not None:
+            if up is None and tarif_ref.bandbreite_up_mbit is not None:
                 cleaned["bandbreite_up_mbit"] = tarif_ref.bandbreite_up_mbit
 
             if not medium and tarif_ref.medium:
@@ -218,6 +218,42 @@ class WanLeitungForm(forms.ModelForm):
             cleaned["provider"] = provider_ref.kuerzel or provider_ref.name
 
         return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        cleaned = getattr(self, "cleaned_data", {})
+
+        provider_ref = cleaned.get("provider_ref")
+        tarif_ref = cleaned.get("tarif_ref")
+
+        if tarif_ref:
+            if not provider_ref:
+                provider_ref = tarif_ref.provider
+                instance.provider_ref = provider_ref
+
+            if not instance.provider:
+                instance.provider = tarif_ref.provider.kuerzel or tarif_ref.provider.name
+
+            if not instance.bezeichnung:
+                instance.bezeichnung = tarif_ref.name
+
+            if instance.bandbreite_down_mbit is None and tarif_ref.bandbreite_down_mbit is not None:
+                instance.bandbreite_down_mbit = tarif_ref.bandbreite_down_mbit
+
+            if instance.bandbreite_up_mbit is None and tarif_ref.bandbreite_up_mbit is not None:
+                instance.bandbreite_up_mbit = tarif_ref.bandbreite_up_mbit
+
+            if not instance.medium and tarif_ref.medium:
+                instance.medium = tarif_ref.medium
+
+        if not instance.provider and provider_ref:
+            instance.provider = provider_ref.kuerzel or provider_ref.name
+
+        if commit:
+            instance.save()
+            self.save_m2m()
+
+        return instance
 
 
 class WanBeauftragungForm(forms.ModelForm):
