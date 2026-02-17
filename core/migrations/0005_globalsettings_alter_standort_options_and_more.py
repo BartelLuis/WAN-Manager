@@ -52,35 +52,6 @@ def _add_wanleitung_provider_ref_if_missing(apps, schema_editor):
     schema_editor.add_field(model, field)
 
 
-def _unique_constraint_exists(schema_editor, table_name, column_name):
-    with schema_editor.connection.cursor() as cursor:
-        constraints = schema_editor.connection.introspection.get_constraints(cursor, table_name)
-
-    for constraint in constraints.values():
-        if constraint.get('unique') and constraint.get('columns') == [column_name]:
-            return True
-    return False
-
-
-def _ensure_verwaltung_kuerzel_unique_if_missing(apps, schema_editor):
-    model = apps.get_model('core', 'Verwaltung')
-    if _unique_constraint_exists(schema_editor, model._meta.db_table, 'kuerzel'):
-        return
-
-    field = model._meta.get_field('kuerzel').clone()
-    field.unique = True
-    sql = schema_editor._create_unique_sql(model, [field])
-    if sql:
-        schema_editor.execute(sql)
-
-
-def _run_ensure_verwaltung_kuerzel_unique(apps, schema_editor):
-    func = globals().get('_ensure_verwaltung_kuerzel_unique_if_missing')
-    if callable(func):
-        return func(apps, schema_editor)
-    return None
-
-
 def _add_wanleitung_tarif_ref_if_missing(apps, schema_editor):
     model = apps.get_model('core', 'WanLeitung')
     if _column_exists(schema_editor, model._meta.db_table, 'tarif_ref_id'):
@@ -212,7 +183,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunPython(_run_ensure_verwaltung_kuerzel_unique, migrations.RunPython.noop),
+                migrations.RunPython(_ensure_verwaltung_kuerzel_unique_if_missing, migrations.RunPython.noop),
             ],
             state_operations=[
                 migrations.AlterField(
