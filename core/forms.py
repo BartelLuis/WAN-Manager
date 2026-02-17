@@ -206,9 +206,9 @@ class WanLeitungForm(forms.ModelForm):
             if not bezeichnung:
                 cleaned["bezeichnung"] = tarif_ref.name
 
-            if not down and tarif_ref.bandbreite_down_mbit is not None:
+            if down is None and tarif_ref.bandbreite_down_mbit is not None:
                 cleaned["bandbreite_down_mbit"] = tarif_ref.bandbreite_down_mbit
-            if not up and tarif_ref.bandbreite_up_mbit is not None:
+            if up is None and tarif_ref.bandbreite_up_mbit is not None:
                 cleaned["bandbreite_up_mbit"] = tarif_ref.bandbreite_up_mbit
 
             if not medium and tarif_ref.medium:

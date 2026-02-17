@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from .forms import WanLeitungForm
-from .models import Provider, Standort, Tarif, Verwaltung, WanLeitung
+from .models import Provider, Standort, Tarif, Verwaltung
 
 
 class WanLeitungFormTests(TestCase):
@@ -38,6 +38,10 @@ class WanLeitungFormTests(TestCase):
         self.assertEqual(leitung.provider_ref, self.provider)
         self.assertEqual(leitung.provider, "PA")
         self.assertEqual(leitung.bezeichnung, "Business 500")
+        self.assertEqual(leitung.bandbreite_down_mbit, 500)
+        self.assertEqual(leitung.bandbreite_up_mbit, 100)
+
+        leitung.refresh_from_db()
         self.assertEqual(leitung.bandbreite_down_mbit, 500)
         self.assertEqual(leitung.bandbreite_up_mbit, 100)
 

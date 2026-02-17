@@ -97,6 +97,14 @@ python manage.py generate_standortkuerzel --all
 python manage.py check
 ```
 
+## Tests ohne MySQL-Rechte
+
+Wenn der MySQL-User keine Berechtigung zum Erstellen der Testdatenbank hat, können Tests mit einer SQLite-Testkonfiguration laufen:
+
+```bash
+python manage.py test --settings=config.settings_test
+```
+
 ## Hinweise für Produktion
 
 - `DEBUG` in `config/settings.py` auf `False` setzen
