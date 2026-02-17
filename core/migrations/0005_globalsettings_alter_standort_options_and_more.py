@@ -4,6 +4,70 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def _column_exists(schema_editor, table_name, column_name):
+    with schema_editor.connection.cursor() as cursor:
+        table_description = schema_editor.connection.introspection.get_table_description(cursor, table_name)
+    return any(col.name == column_name for col in table_description)
+
+
+def _add_standort_arbeitsplaetze_if_missing(apps, schema_editor):
+    model = apps.get_model('core', 'Standort')
+    if _column_exists(schema_editor, model._meta.db_table, 'arbeitsplaetze'):
+        return
+
+    field = models.PositiveIntegerField(default=0, verbose_name='Arbeitsplätze')
+    field.set_attributes_from_name('arbeitsplaetze')
+    schema_editor.add_field(model, field)
+
+
+def _add_vertrag_provider_ref_if_missing(apps, schema_editor):
+    model = apps.get_model('core', 'Vertrag')
+    if _column_exists(schema_editor, model._meta.db_table, 'provider_ref_id'):
+        return
+
+    field = models.ForeignKey(
+        blank=True,
+        null=True,
+        on_delete=django.db.models.deletion.SET_NULL,
+        related_name='vertraege',
+        to='core.provider',
+    )
+    field.set_attributes_from_name('provider_ref')
+    schema_editor.add_field(model, field)
+
+
+def _add_wanleitung_provider_ref_if_missing(apps, schema_editor):
+    model = apps.get_model('core', 'WanLeitung')
+    if _column_exists(schema_editor, model._meta.db_table, 'provider_ref_id'):
+        return
+
+    field = models.ForeignKey(
+        blank=True,
+        null=True,
+        on_delete=django.db.models.deletion.SET_NULL,
+        related_name='leitungen',
+        to='core.provider',
+    )
+    field.set_attributes_from_name('provider_ref')
+    schema_editor.add_field(model, field)
+
+
+def _add_wanleitung_tarif_ref_if_missing(apps, schema_editor):
+    model = apps.get_model('core', 'WanLeitung')
+    if _column_exists(schema_editor, model._meta.db_table, 'tarif_ref_id'):
+        return
+
+    field = models.ForeignKey(
+        blank=True,
+        null=True,
+        on_delete=django.db.models.deletion.SET_NULL,
+        related_name='leitungen',
+        to='core.tarif',
+    )
+    field.set_attributes_from_name('tarif_ref')
+    schema_editor.add_field(model, field)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -26,11 +90,26 @@ class Migration(migrations.Migration):
             """,
             reverse_sql=migrations.RunSQL.noop,
         ),
-        migrations.CreateModel(
-            name='GlobalSettings',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('mbit_pro_arbeitsplatz', models.PositiveIntegerField(default=10, verbose_name='Mbit/s pro Arbeitsplatz')),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql="""
+                        CREATE TABLE IF NOT EXISTS `core_globalsettings` (
+                            `id` bigint AUTO_INCREMENT NOT NULL PRIMARY KEY,
+                            `mbit_pro_arbeitsplatz` integer UNSIGNED NOT NULL DEFAULT 10
+                        ) ENGINE=InnoDB
+                    """,
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.CreateModel(
+                    name='GlobalSettings',
+                    fields=[
+                        ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                        ('mbit_pro_arbeitsplatz', models.PositiveIntegerField(default=10, verbose_name='Mbit/s pro Arbeitsplatz')),
+                    ],
+                ),
             ],
         ),
         migrations.AlterModelOptions(
@@ -41,20 +120,41 @@ class Migration(migrations.Migration):
             name='verwaltung',
             options={'ordering': ['kuerzel']},
         ),
-        migrations.AddField(
-            model_name='standort',
-            name='arbeitsplaetze',
-            field=models.PositiveIntegerField(default=0, verbose_name='Arbeitsplätze'),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(_add_standort_arbeitsplaetze_if_missing, migrations.RunPython.noop),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='standort',
+                    name='arbeitsplaetze',
+                    field=models.PositiveIntegerField(default=0, verbose_name='Arbeitsplätze'),
+                ),
+            ],
         ),
-        migrations.AddField(
-            model_name='vertrag',
-            name='provider_ref',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='vertraege', to='core.provider'),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(_add_vertrag_provider_ref_if_missing, migrations.RunPython.noop),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='vertrag',
+                    name='provider_ref',
+                    field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='vertraege', to='core.provider'),
+                ),
+            ],
         ),
-        migrations.AddField(
-            model_name='wanleitung',
-            name='provider_ref',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='leitungen', to='core.provider'),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(_add_wanleitung_provider_ref_if_missing, migrations.RunPython.noop),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='wanleitung',
+                    name='provider_ref',
+                    field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='leitungen', to='core.provider'),
+                ),
+            ],
         ),
         migrations.AlterField(
             model_name='standort',
@@ -131,25 +231,54 @@ class Migration(migrations.Migration):
             name='vlan_id',
             field=models.IntegerField(blank=True, null=True, verbose_name='VLAN-ID'),
         ),
-        migrations.CreateModel(
-            name='Tarif',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=255)),
-                ('beschreibung', models.TextField(blank=True, null=True)),
-                ('bandbreite_down_mbit', models.IntegerField(blank=True, null=True)),
-                ('bandbreite_up_mbit', models.IntegerField(blank=True, null=True)),
-                ('medium', models.CharField(blank=True, max_length=50, null=True)),
-                ('bemerkung', models.TextField(blank=True, null=True)),
-                ('provider', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tarife', to='core.provider')),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql="""
+                        CREATE TABLE IF NOT EXISTS `core_tarif` (
+                            `id` bigint AUTO_INCREMENT NOT NULL PRIMARY KEY,
+                            `name` varchar(255) NOT NULL,
+                            `beschreibung` longtext NULL,
+                            `bandbreite_down_mbit` integer NULL,
+                            `bandbreite_up_mbit` integer NULL,
+                            `medium` varchar(50) NULL,
+                            `bemerkung` longtext NULL,
+                            `provider_id` bigint NOT NULL,
+                            CONSTRAINT `core_tarif_provider_id_fk` FOREIGN KEY (`provider_id`) REFERENCES `core_provider` (`id`)
+                        ) ENGINE=InnoDB
+                    """,
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
             ],
-            options={
-                'ordering': ['provider__name', 'name'],
-            },
+            state_operations=[
+                migrations.CreateModel(
+                    name='Tarif',
+                    fields=[
+                        ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                        ('name', models.CharField(max_length=255)),
+                        ('beschreibung', models.TextField(blank=True, null=True)),
+                        ('bandbreite_down_mbit', models.IntegerField(blank=True, null=True)),
+                        ('bandbreite_up_mbit', models.IntegerField(blank=True, null=True)),
+                        ('medium', models.CharField(blank=True, max_length=50, null=True)),
+                        ('bemerkung', models.TextField(blank=True, null=True)),
+                        ('provider', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tarife', to='core.provider')),
+                    ],
+                    options={
+                        'ordering': ['provider__name', 'name'],
+                    },
+                ),
+            ],
         ),
-        migrations.AddField(
-            model_name='wanleitung',
-            name='tarif_ref',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='leitungen', to='core.tarif'),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(_add_wanleitung_tarif_ref_if_missing, migrations.RunPython.noop),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='wanleitung',
+                    name='tarif_ref',
+                    field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='leitungen', to='core.tarif'),
+                ),
+            ],
         ),
     ]
