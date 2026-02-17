@@ -52,28 +52,6 @@ def _add_wanleitung_provider_ref_if_missing(apps, schema_editor):
     schema_editor.add_field(model, field)
 
 
-def _unique_constraint_exists(schema_editor, table_name, column_name):
-    with schema_editor.connection.cursor() as cursor:
-        constraints = schema_editor.connection.introspection.get_constraints(cursor, table_name)
-
-    for constraint in constraints.values():
-        if constraint.get('unique') and constraint.get('columns') == [column_name]:
-            return True
-    return False
-
-
-def _ensure_verwaltung_kuerzel_unique_if_missing(apps, schema_editor):
-    model = apps.get_model('core', 'Verwaltung')
-    if _unique_constraint_exists(schema_editor, model._meta.db_table, 'kuerzel'):
-        return
-
-    field = model._meta.get_field('kuerzel').clone()
-    field.unique = True
-    sql = schema_editor._create_unique_sql(model, [field])
-    if sql:
-        schema_editor.execute(sql)
-
-
 def _add_wanleitung_tarif_ref_if_missing(apps, schema_editor):
     model = apps.get_model('core', 'WanLeitung')
     if _column_exists(schema_editor, model._meta.db_table, 'tarif_ref_id'):
