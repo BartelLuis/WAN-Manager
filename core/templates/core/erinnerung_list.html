@@ -1,0 +1,55 @@
+{% extends "core/base.html" %}
+
+{% block title %}Erinnerungen{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded shadow p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h1 class="text-2xl font-semibold">Erinnerungen</h1>
+        <div class="text-sm space-x-2">
+            <a href="?show=offen" class="px-3 py-1 rounded {% if show == 'offen' %}bg-blue-600 text-white{% else %}bg-gray-100{% endif %}">Offen</a>
+            <a href="?show=ueberfaellig" class="px-3 py-1 rounded {% if show == 'ueberfaellig' %}bg-blue-600 text-white{% else %}bg-gray-100{% endif %}">Überfällig</a>
+            <a href="?show=alle" class="px-3 py-1 rounded {% if show == 'alle' %}bg-blue-600 text-white{% else %}bg-gray-100{% endif %}">Alle</a>
+        </div>
+    </div>
+
+    <div class="text-sm text-gray-600 mb-3">Heute: {{ today|date:"d.m.Y" }}</div>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse">
+            <thead>
+                <tr class="border-b">
+                    <th class="text-left py-2">Fällig am</th>
+                    <th class="text-left py-2">Status</th>
+                    <th class="text-left py-2">Typ</th>
+                    <th class="text-left py-2">Titel</th>
+                    <th class="text-left py-2">Bezug</th>
+                    <th class="text-left py-2">Zugewiesen an</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in erinnerungen %}
+                <tr class="border-b">
+                    <td class="py-2">{{ e.faellig_am|date:"d.m.Y" }}</td>
+                    <td class="py-2">{{ e.get_status_display }}</td>
+                    <td class="py-2">{{ e.get_typ_display }}</td>
+                    <td class="py-2">{{ e.titel }}</td>
+                    <td class="py-2">
+                        {% if e.vertrag_id %}
+                            Vertrag: {{ e.vertrag.vertragsnummer }}
+                        {% elif e.beauftragung_id %}
+                            Beauftragung: {{ e.beauftragung.titel }}
+                        {% endif %}
+                    </td>
+                    <td class="py-2">{{ e.zugewiesen_an.username|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="py-4 text-gray-500">Keine Erinnerungen gefunden.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

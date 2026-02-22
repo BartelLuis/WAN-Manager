@@ -1,8 +1,11 @@
 from decimal import Decimal
+import csv
 from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
+from django.utils import timezone
 
 from django.db.models import (
     Count,
@@ -27,6 +30,7 @@ from .models import (
     Provider,
     ProviderZusatzoption,
     Tarif,
+    Erinnerung,
 )
 from .forms import (
     StandortForm,
@@ -832,6 +836,109 @@ def beauftragung_provider_kontext_update(request, beauftragung_pk, provider_pk):
         "core/beauftragung_provider_kontext_form.html",
         {"form": form, "beauftragung": beauftragung, "provider": kontext.provider, "kontext": kontext},
     )
+
+
+@login_required
+def erinnerung_list(request):
+    user = request.user
+    qs = Erinnerung.objects.select_related("vertrag", "beauftragung", "zugewiesen_an")
+
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+        qs = qs.filter(
+            Q(vertrag__verwaltung_id=user.profile.verwaltung_id)
+            | Q(beauftragung__standort__verwaltung_id=user.profile.verwaltung_id)
+        )
+
+    show = request.GET.get("show", "offen")
+    today = timezone.localdate()
+    if show == "offen":
+        qs = qs.exclude(status=Erinnerung.STATUS_ERLEDIGT)
+    if show == "ueberfaellig":
+        qs = qs.filter(status=Erinnerung.STATUS_OFFEN, faellig_am__lt=today)
+
+    return render(
+        request,
+        "core/erinnerung_list.html",
+        {"erinnerungen": qs.order_by("faellig_am", "id"), "show": show, "today": today},
+    )
+
+
+@login_required
+def report_vertraege_csv(request):
+    user = request.user
+    vertraege = Vertrag.objects.select_related("verwaltung", "provider_ref").order_by("verwaltung__kuerzel", "provider", "vertragsnummer")
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+        vertraege = vertraege.filter(verwaltung_id=user.profile.verwaltung_id)
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="report_vertraege.csv"'
+    writer = csv.writer(response, delimiter=";")
+    writer.writerow(
+        [
+            "Verwaltung",
+            "Provider",
+            "Vertragsnummer",
+            "Laufzeit von",
+            "Laufzeit bis",
+            "Kündigungsfrist (Tage)",
+            "Kosten monatlich netto",
+            "Kosten einmalig netto",
+        ]
+    )
+    for v in vertraege:
+        writer.writerow(
+            [
+                v.verwaltung.kuerzel or v.verwaltung.name,
+                v.provider,
+                v.vertragsnummer,
+                v.laufzeit_von or "",
+                v.laufzeit_bis or "",
+                v.kuendigungsfrist_tage or "",
+                v.kosten_monat_netto or "",
+                v.kosten_einmalig_netto or "",
+            ]
+        )
+    return response
+
+
+@login_required
+def report_beauftragungen_csv(request):
+    user = request.user
+    beauftragungen = WanBeauftragung.objects.select_related("standort", "standort__verwaltung", "erstellt_von").prefetch_related("angefragte_provider")
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+        beauftragungen = beauftragungen.filter(standort__verwaltung_id=user.profile.verwaltung_id)
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="report_beauftragungen.csv"'
+    writer = csv.writer(response, delimiter=";")
+    writer.writerow(
+        [
+            "Angefragt am",
+            "Status",
+            "Priorität",
+            "Verwaltung",
+            "Standort",
+            "Titel",
+            "Ticket",
+            "Provider",
+            "Umsetzung bis",
+        ]
+    )
+    for b in beauftragungen.order_by("-angefragt_am", "-id"):
+        writer.writerow(
+            [
+                b.angefragt_am or "",
+                b.get_status_display(),
+                b.get_prioritaet_display(),
+                b.standort.verwaltung.kuerzel or b.standort.verwaltung.name,
+                b.standort.standort_code or b.standort.name,
+                b.titel,
+                b.ticket_nummer or "",
+                ", ".join(b.angefragte_provider.values_list("name", flat=True)),
+                b.umsetzung_bis or "",
+            ]
+        )
+    return response
 
 
 # ---------------------------- Verträge ----------------------------

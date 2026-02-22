@@ -303,12 +303,22 @@ class WanBeauftragungForm(forms.ModelForm):
         cleaned = super().clean()
         standort = cleaned.get("standort")
         bestehende_leitung = cleaned.get("bestehende_leitung")
+        status = cleaned.get("status")
+        angefragte_provider = cleaned.get("angefragte_provider")
+        bedarf_down = cleaned.get("bedarf_down_mbit")
+        bedarf_up = cleaned.get("bedarf_up_mbit")
 
         if bestehende_leitung and standort and bestehende_leitung.standort_id != standort.id:
             self.add_error(
                 "bestehende_leitung",
                 "Die bestehende Leitung muss zum ausgewaehlten Standort gehoeren.",
             )
+
+        if status in {WanBeauftragung.STATUS_BEAUFTRAGT, WanBeauftragung.STATUS_UMGESETZT}:
+            if not angefragte_provider:
+                self.add_error("angefragte_provider", "Bei Status 'Beauftragt/Umgesetzt' muss mindestens ein Provider gewaehlt sein.")
+            if not bedarf_down and not bedarf_up:
+                self.add_error("bedarf_down_mbit", "Bei Status 'Beauftragt/Umgesetzt' muss ein Bandbreitenbedarf gepflegt sein.")
 
         return cleaned
 

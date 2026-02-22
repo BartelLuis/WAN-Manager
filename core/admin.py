@@ -14,6 +14,9 @@ from .models import (
     ProviderZusatzoption,
     Tarif,
     GlobalSettings,
+    AuditLog,
+    Erinnerung,
+    DokumentAnhang,
 )
 
 
@@ -119,6 +122,34 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
         if GlobalSettings.objects.exists():
             return False
         return super().has_add_permission(request)
+
+
+@admin.register(Erinnerung)
+class ErinnerungAdmin(admin.ModelAdmin):
+    list_display = ("titel", "typ", "status", "faellig_am", "zugewiesen_an", "vertrag", "beauftragung")
+    list_filter = ("typ", "status", "faellig_am")
+    search_fields = ("titel", "notiz", "vertrag__vertragsnummer", "beauftragung__titel")
+
+
+@admin.register(DokumentAnhang)
+class DokumentAnhangAdmin(admin.ModelAdmin):
+    list_display = ("bezeichnung", "content_type", "object_id", "hochgeladen_am", "hochgeladen_von")
+    list_filter = ("content_type", "hochgeladen_am")
+    search_fields = ("bezeichnung", "bemerkung")
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "model_label", "object_id", "action", "actor")
+    list_filter = ("action", "model_label", "created_at")
+    search_fields = ("model_label", "object_repr")
+    readonly_fields = ("created_at", "model_label", "object_id", "action", "object_repr", "changed_fields", "snapshot", "actor", "content_type")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 admin.site.unregister(User)

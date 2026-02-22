@@ -1,8 +1,14 @@
 import re
 from collections import defaultdict
 
-from django.db import models
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db.models import Q
+from django.db.models.signals import post_delete, post_save, pre_save
+from django.dispatch import receiver
 
 
 class Verwaltung(models.Model):
@@ -67,6 +73,9 @@ class ProviderZusatzoption(models.Model):
 
     class Meta:
         ordering = ["provider__name", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["provider", "name"], name="uniq_option_name_per_provider"),
+        ]
 
     def __str__(self):
         return f"{self.provider} - {self.name}"
@@ -83,6 +92,9 @@ class Tarif(models.Model):
 
     class Meta:
         ordering = ["provider__name", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["provider", "name"], name="uniq_tarif_name_per_provider"),
+        ]
 
     def __str__(self):
         return f"{self.provider} - {self.name}"
@@ -102,6 +114,13 @@ class Standort(models.Model):
 
     class Meta:
         ordering = ["standort_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["standort_code"],
+                name="uniq_standort_code_not_blank",
+                condition=Q(standort_code__isnull=False) & ~Q(standort_code=""),
+            ),
+        ]
 
     def __str__(self):
         if self.standort_code:
@@ -197,9 +216,28 @@ class Vertrag(models.Model):
 
     class Meta:
         ordering = ["provider", "vertragsnummer"]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(laufzeit_von__isnull=True) | Q(laufzeit_bis__isnull=True) | Q(laufzeit_bis__gte=models.F("laufzeit_von")),
+                name="vertrag_laufzeit_von_bis_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(kuendigungsfrist_tage__isnull=True) | Q(kuendigungsfrist_tage__gte=0),
+                name="vertrag_kuendigungsfrist_non_negative",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.provider} - {self.vertragsnummer}"
+
+    def clean(self):
+        errors = {}
+        if self.laufzeit_von and self.laufzeit_bis and self.laufzeit_bis < self.laufzeit_von:
+            errors["laufzeit_bis"] = "Laufzeit bis muss nach Laufzeit von liegen."
+        if self.kuendigungsfrist_tage is not None and self.kuendigungsfrist_tage < 0:
+            errors["kuendigungsfrist_tage"] = "Kündigungsfrist darf nicht negativ sein."
+        if errors:
+            raise ValidationError(errors)
 
 
 class WanLeitung(models.Model):
@@ -244,10 +282,35 @@ class WanLeitung(models.Model):
 
     class Meta:
         ordering = ["standort__verwaltung__name", "standort__name", "provider"]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(vlan_id__isnull=True) | (Q(vlan_id__gte=1) & Q(vlan_id__lte=4094)),
+                name="wanleitung_vlan_in_valid_range",
+            ),
+            models.CheckConstraint(
+                check=Q(inbetriebnahme_datum__isnull=True) | Q(ausserbetriebnahme_datum__isnull=True) | Q(ausserbetriebnahme_datum__gte=models.F("inbetriebnahme_datum")),
+                name="wanleitung_ausserbetriebnahme_after_inbetriebnahme",
+            ),
+        ]
 
     def __str__(self):
         label = self.bezeichnung or self.provider
         return f"{self.standort} - {label} ({self.bandbreite_down_mbit or '?'} Mbit)"
+
+    def clean(self):
+        errors = {}
+        if self.vlan_id is not None and not (1 <= self.vlan_id <= 4094):
+            errors["vlan_id"] = "VLAN-ID muss zwischen 1 und 4094 liegen."
+        if (
+            self.inbetriebnahme_datum
+            and self.ausserbetriebnahme_datum
+            and self.ausserbetriebnahme_datum < self.inbetriebnahme_datum
+        ):
+            errors["ausserbetriebnahme_datum"] = "Außerbetriebnahme darf nicht vor Inbetriebnahme liegen."
+        if self.tarif_ref_id and self.provider_ref_id and self.tarif_ref.provider_id != self.provider_ref_id:
+            errors["tarif_ref"] = "Tarif und Provider passen nicht zusammen."
+        if errors:
+            raise ValidationError(errors)
 
 
 class WanBeauftragung(models.Model):
@@ -312,6 +375,12 @@ class WanBeauftragung(models.Model):
 
     class Meta:
         ordering = ["-angefragt_am", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(umsetzung_bis__isnull=True) | Q(angefragt_am__isnull=True) | Q(umsetzung_bis__gte=models.F("angefragt_am")),
+                name="beauftragung_umsetzung_after_anfrage",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.standort} - {self.titel}"
@@ -401,6 +470,96 @@ class WanBeauftragungProviderKontext(models.Model):
             return template
 
 
+class DokumentAnhang(models.Model):
+    bezeichnung = models.CharField(max_length=255)
+    datei = models.FileField(upload_to="anhaenge/%Y/%m/")
+    hochgeladen_am = models.DateTimeField(auto_now_add=True)
+    hochgeladen_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    bemerkung = models.TextField(blank=True, null=True)
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    class Meta:
+        ordering = ["-hochgeladen_am"]
+
+    def __str__(self):
+        return self.bezeichnung
+
+
+class Erinnerung(models.Model):
+    STATUS_OFFEN = "offen"
+    STATUS_ERLEDIGT = "erledigt"
+    STATUS_UEBERFAELLIG = "ueberfaellig"
+    STATUS_CHOICES = [
+        (STATUS_OFFEN, "Offen"),
+        (STATUS_ERLEDIGT, "Erledigt"),
+        (STATUS_UEBERFAELLIG, "Überfällig"),
+    ]
+
+    TYP_VERTRAG = "vertrag"
+    TYP_BEAUFTRAGUNG = "beauftragung"
+    TYP_CHOICES = [
+        (TYP_VERTRAG, "Vertrag"),
+        (TYP_BEAUFTRAGUNG, "Beauftragung"),
+    ]
+
+    titel = models.CharField(max_length=255)
+    typ = models.CharField(max_length=20, choices=TYP_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OFFEN)
+    faellig_am = models.DateField()
+    zugewiesen_an = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    notiz = models.TextField(blank=True, null=True)
+
+    vertrag = models.ForeignKey(Vertrag, on_delete=models.CASCADE, blank=True, null=True, related_name="erinnerungen")
+    beauftragung = models.ForeignKey(WanBeauftragung, on_delete=models.CASCADE, blank=True, null=True, related_name="erinnerungen")
+
+    class Meta:
+        ordering = ["status", "faellig_am", "id"]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    (Q(vertrag__isnull=False) & Q(beauftragung__isnull=True) & Q(typ="vertrag"))
+                    | (Q(vertrag__isnull=True) & Q(beauftragung__isnull=False) & Q(typ="beauftragung"))
+                ),
+                name="erinnerung_exactly_one_target",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.titel} ({self.get_typ_display()})"
+
+
+class AuditLog(models.Model):
+    ACTION_CREATE = "create"
+    ACTION_UPDATE = "update"
+    ACTION_DELETE = "delete"
+    ACTION_CHOICES = [
+        (ACTION_CREATE, "Create"),
+        (ACTION_UPDATE, "Update"),
+        (ACTION_DELETE, "Delete"),
+    ]
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    model_label = models.CharField(max_length=120)
+    object_repr = models.CharField(max_length=255)
+    changed_fields = models.JSONField(blank=True, null=True)
+    snapshot = models.JSONField(blank=True, null=True)
+    actor = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="audit_logs")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.model_label}#{self.object_id} {self.action}"
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     verwaltung = models.ForeignKey(Verwaltung, on_delete=models.SET_NULL, blank=True, null=True)
@@ -434,4 +593,97 @@ class GlobalSettings(models.Model):
 
     def __str__(self):
         return "Globale Einstellungen"
+
+
+AUDITED_MODELS = (
+    Verwaltung,
+    Standort,
+    Vertrag,
+    WanLeitung,
+    WanBeauftragung,
+    WanBeauftragungProviderKontext,
+    Provider,
+    ProviderZusatzoption,
+    Tarif,
+    Erinnerung,
+    DokumentAnhang,
+)
+
+
+def _serialize_model_instance(instance):
+    payload = {}
+    for field in instance._meta.concrete_fields:
+        if field.name == "id":
+            continue
+        value = getattr(instance, field.name, None)
+        if isinstance(field, models.ForeignKey):
+            payload[field.name] = getattr(instance, f"{field.name}_id", None)
+        elif isinstance(value, (str, int, float, bool)) or value is None:
+            payload[field.name] = value
+        else:
+            payload[field.name] = str(value)
+    return payload
+
+
+@receiver(pre_save)
+def _capture_previous_state(sender, instance, **kwargs):
+    if sender not in AUDITED_MODELS:
+        return
+    if not getattr(instance, "pk", None):
+        instance._audit_before = None
+        return
+    previous = sender.objects.filter(pk=instance.pk).first()
+    instance._audit_before = _serialize_model_instance(previous) if previous else None
+
+
+@receiver(post_save)
+def _create_audit_log_on_save(sender, instance, created, **kwargs):
+    if sender not in AUDITED_MODELS:
+        return
+    content_type = ContentType.objects.get_for_model(sender)
+    current = _serialize_model_instance(instance)
+
+    if created:
+        AuditLog.objects.create(
+            content_type=content_type,
+            object_id=instance.pk,
+            action=AuditLog.ACTION_CREATE,
+            model_label=instance._meta.label,
+            object_repr=str(instance),
+            changed_fields=list(current.keys()),
+            snapshot=current,
+        )
+        return
+
+    previous = getattr(instance, "_audit_before", None) or {}
+    changed = [key for key, value in current.items() if previous.get(key) != value]
+    if not changed:
+        return
+
+    AuditLog.objects.create(
+        content_type=content_type,
+        object_id=instance.pk,
+        action=AuditLog.ACTION_UPDATE,
+        model_label=instance._meta.label,
+        object_repr=str(instance),
+        changed_fields=changed,
+        snapshot=current,
+    )
+
+
+@receiver(post_delete)
+def _create_audit_log_on_delete(sender, instance, **kwargs):
+    if sender not in AUDITED_MODELS:
+        return
+    content_type = ContentType.objects.get_for_model(sender)
+    snapshot = _serialize_model_instance(instance)
+    AuditLog.objects.create(
+        content_type=content_type,
+        object_id=instance.pk or 0,
+        action=AuditLog.ACTION_DELETE,
+        model_label=instance._meta.label,
+        object_repr=str(instance),
+        changed_fields=[],
+        snapshot=snapshot,
+    )
 

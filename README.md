@@ -91,10 +91,23 @@ python manage.py generate_standortkuerzel
 python manage.py generate_standortkuerzel --all
 ```
 
+Erinnerungen für Fristen erzeugen:
+
+```bash
+python manage.py generate_erinnerungen --dry-run
+python manage.py generate_erinnerungen --days 45
+```
+
 ## Kurztest
 
 ```bash
 python manage.py check
+```
+
+Tests lokal mit SQLite (ohne MySQL-Testdatenbank):
+
+```bash
+python manage.py test core --settings=config.settings_test
 ```
 
 ## Hinweise für Produktion

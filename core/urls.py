@@ -44,6 +44,9 @@ urlpatterns = [
         views.beauftragung_provider_kontext_update,
         name="beauftragung_provider_kontext_update",
     ),
+    path("erinnerungen/", views.erinnerung_list, name="erinnerung_list"),
+    path("reports/vertraege.csv", views.report_vertraege_csv, name="report_vertraege_csv"),
+    path("reports/beauftragungen.csv", views.report_beauftragungen_csv, name="report_beauftragungen_csv"),
 
     path("vertraege/", views.vertrag_list, name="vertrag_list"),
     path("vertraege/neu/", views.vertrag_create, name="vertrag_create"),
