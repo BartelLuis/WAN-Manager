@@ -1,11 +1,18 @@
 from decimal import Decimal
 import csv
+import io
+from datetime import timedelta
 from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
+from django.contrib.contenttypes.models import ContentType
+from django.conf import settings
+from django.core.mail import EmailMessage
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
+from django.db import transaction
 
 from django.db.models import (
     Count,
@@ -31,6 +38,13 @@ from .models import (
     ProviderZusatzoption,
     Tarif,
     Erinnerung,
+    AuditLog,
+    DokumentAnhang,
+    ObjektNotiz,
+    UserNotification,
+    SavedFilter,
+    UserProfile,
+    GlobalSettings,
 )
 from .forms import (
     StandortForm,
@@ -42,6 +56,8 @@ from .forms import (
     ProviderForm,
     ProviderZusatzoptionForm,
     TarifForm,
+    CsvImportForm,
+    SavedFilterForm,
 )
 
 # --- WAN Config (MBits pro Arbeitsplatz, Down + Up) ---
@@ -78,6 +94,95 @@ def can_manage_beauftragung(user) -> bool:
         or user_in_group(user, "EINKAEUFER")
         or user_in_group(user, "EINKAUFER")
     )
+
+
+def can_approve_beauftragung(user) -> bool:
+    return (
+        is_super_or_net_admin(user)
+        or user_in_group(user, "GENEHMIGER")
+    )
+
+
+def unread_notifications_count(user) -> int:
+    if not user.is_authenticated:
+        return 0
+    return UserNotification.objects.filter(user=user, gelesen=False).count()
+
+
+def _role_label(user) -> str:
+    if user.is_superuser or user_in_group(user, "SUPERADMIN"):
+        return "SUPERADMIN"
+    if user_in_group(user, "NETZADMIN"):
+        return "NETZADMIN"
+    if user_in_group(user, "IT-BEAUFTRAGTER"):
+        return "IT-BEAUFTRAGTER"
+    if user_in_group(user, "EINKAEUFER") or user_in_group(user, "EINKAUFER"):
+        return "EINKAEUFER"
+    return "USER"
+
+
+def _smart_provider_suggestions(user, standort=None):
+    qs = Provider.objects.none()
+    if standort:
+        qs = Provider.objects.filter(leitungen__standort=standort)
+
+    if user and hasattr(user, "profile") and user.profile.verwaltung_id:
+        qs = qs | Provider.objects.filter(
+            beauftragungen__standort__verwaltung_id=user.profile.verwaltung_id
+        )
+    return qs.distinct().order_by("name")[:5]
+
+
+def _timeline_for_object(obj):
+    ct = ContentType.objects.get_for_model(obj.__class__)
+    audits = AuditLog.objects.filter(content_type=ct, object_id=obj.pk)[:30]
+    notes = ObjektNotiz.objects.filter(content_type=ct, object_id=obj.pk)[:30]
+    docs = DokumentAnhang.objects.filter(content_type=ct, object_id=obj.pk)[:30]
+    timeline = []
+    for a in audits:
+        timeline.append({"kind": "audit", "time": a.created_at, "item": a})
+    for n in notes:
+        timeline.append({"kind": "note", "time": n.erstellt_am, "item": n})
+    for d in docs:
+        timeline.append({"kind": "doc", "time": d.hochgeladen_am, "item": d})
+    timeline.sort(key=lambda x: x["time"], reverse=True)
+    return timeline[:50]
+
+
+def _send_ticket_email_for_beauftragung(beauftragung, approver):
+    settings_obj = GlobalSettings.objects.filter(pk=1).first()
+    recipient = (
+        (settings_obj.ticket_system_email or "").strip()
+        if settings_obj
+        else ""
+    ) or (getattr(settings, "TICKET_SYSTEM_EMAIL", "") or "").strip()
+    if not recipient:
+        raise ValueError("Keine Ticketsystem-E-Mail konfiguriert.")
+
+    header_name = (
+        (settings_obj.ticket_header_name or "").strip()
+        if settings_obj
+        else ""
+    ) or "X-Ticket-Nummer"
+    ticket_nummer = (beauftragung.ticket_nummer or f"WAN-{beauftragung.pk}").strip()
+
+    subject = f"WAN-Beauftragung genehmigt [{ticket_nummer}]"
+    body = (
+        f"Die WAN-Beauftragung wurde genehmigt.\n\n"
+        f"Titel: {beauftragung.titel}\n"
+        f"Standort: {beauftragung.standort.name if beauftragung.standort_id else '-'}\n"
+        f"Ticketnummer: {ticket_nummer}\n"
+        f"Genehmigt von: {approver.username}\n"
+        f"Genehmigt am: {timezone.localtime(timezone.now()).strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"Bitte Ticket weiterverarbeiten."
+    )
+    email = EmailMessage(
+        subject=subject,
+        body=body,
+        to=[recipient],
+        headers={header_name: ticket_nummer},
+    )
+    email.send(fail_silently=False)
 
 
 def _verwaltungen_queryset_for_user(user):
@@ -158,8 +263,53 @@ def dashboard(request):
     user = request.user
     verwaltungen = _verwaltungen_queryset_for_user(user)
     verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen).order_by("kuerzel")
+    today = timezone.localdate()
 
-    return render(request, "core/dashboard.html", {"verwaltungen": verwaltungen})
+    vertrags_fristen = Vertrag.objects.filter(
+        laufzeit_bis__isnull=False,
+        laufzeit_bis__lte=today + timedelta(days=30),
+    )
+    offene_beauftragungen = WanBeauftragung.objects.exclude(
+        status__in=[
+            WanBeauftragung.STATUS_UMGESETZT,
+            WanBeauftragung.STATUS_ABGELEHNT,
+            WanBeauftragung.STATUS_STORNIERT,
+        ]
+    )
+    offene_erinnerungen = Erinnerung.objects.exclude(status=Erinnerung.STATUS_ERLEDIGT)
+
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+        vertrags_fristen = vertrags_fristen.filter(verwaltung_id=user.profile.verwaltung_id)
+        offene_beauftragungen = offene_beauftragungen.filter(standort__verwaltung_id=user.profile.verwaltung_id)
+        offene_erinnerungen = offene_erinnerungen.filter(
+            Q(vertrag__verwaltung_id=user.profile.verwaltung_id)
+            | Q(beauftragung__standort__verwaltung_id=user.profile.verwaltung_id)
+        )
+
+    unterversorgt = 0
+    standorte = Standort.objects.prefetch_related("leitungen")
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+        standorte = standorte.filter(verwaltung_id=user.profile.verwaltung_id)
+    for s in standorte:
+        required = int((s.arbeitsplaetze or 0) * WAN_MBIT_PER_AP_DOWN)
+        if required <= 0:
+            continue
+        best = max([l.bandbreite_down_mbit or 0 for l in s.leitungen.all()] + [0])
+        if best < required:
+            unterversorgt += 1
+
+    context = {
+        "verwaltungen": verwaltungen,
+        "role_label": _role_label(user),
+        "unread_notifications": unread_notifications_count(user),
+        "risk_cards": [
+            {"label": "Offene Erinnerungen", "value": offene_erinnerungen.count(), "link": "core:erinnerung_list"},
+            {"label": "Offene Beauftragungen", "value": offene_beauftragungen.count(), "link": "core:beauftragung_list"},
+            {"label": "Verträge <= 30 Tage", "value": vertrags_fristen.count(), "link": "core:vertrag_list"},
+            {"label": "Unterversorgte Standorte", "value": unterversorgt, "link": "core:standort_list"},
+        ],
+    }
+    return render(request, "core/dashboard.html", context)
 
 
 # ---------------------------- Verwaltungen ----------------------------
@@ -523,7 +673,12 @@ def standort_detail(request, pk):
     return render(
         request,
         "core/standort_detail.html",
-        {"standort": standort, "leitungen": leitungen, "can_edit": is_super_or_net_admin(user)},
+        {
+            "standort": standort,
+            "leitungen": leitungen,
+            "can_edit": is_super_or_net_admin(user),
+            "timeline": _timeline_for_object(standort),
+        },
     )
 
 
@@ -598,7 +753,7 @@ def wanleitung_detail(request, pk):
     return render(
         request,
         "core/wanleitung_detail.html",
-        {"leitung": leitung, "can_edit": is_super_or_net_admin(user)},
+        {"leitung": leitung, "can_edit": is_super_or_net_admin(user), "timeline": _timeline_for_object(leitung)},
     )
 
 
@@ -619,6 +774,20 @@ def beauftragung_list(request):
     if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
         beauftragungen = beauftragungen.filter(standort__verwaltung=user.profile.verwaltung)
 
+    if request.method == "POST" and can_manage_beauftragung(user):
+        action = request.POST.get("bulk_action")
+        ids = request.POST.getlist("selected")
+        if ids:
+            qs = beauftragungen.filter(id__in=ids)
+            if action in dict(WanBeauftragung.STATUS_CHOICES):
+                qs.update(status=action)
+                messages.success(request, f"{qs.count()} Beauftragungen aktualisiert.")
+            elif action == "delete":
+                count = qs.count()
+                qs.delete()
+                messages.success(request, f"{count} Beauftragungen gelöscht.")
+        return redirect("core:beauftragung_list")
+
     search = request.GET.get("q")
     if search:
         beauftragungen = beauftragungen.filter(
@@ -628,6 +797,8 @@ def beauftragung_list(request):
             | Q(standort__standort_code__icontains=search)
         )
 
+    saved_filters = SavedFilter.objects.filter(user=user, target=SavedFilter.TARGET_BEAUFTRAGUNG)
+
     return render(
         request,
         "core/beauftragung_list.html",
@@ -635,6 +806,8 @@ def beauftragung_list(request):
             "beauftragungen": beauftragungen,
             "search": search,
             "can_create_beauftragung": can_manage_beauftragung(user),
+            "saved_filters": saved_filters,
+            "status_choices": WanBeauftragung.STATUS_CHOICES,
         },
     )
 
@@ -713,6 +886,11 @@ def beauftragung_create(request):
             return redirect("core:beauftragung_detail", pk=beauftragung.pk)
     else:
         form = WanBeauftragungForm(user=user)
+        standort_id = request.GET.get("standort")
+        standort = Standort.objects.filter(pk=standort_id).first() if standort_id else None
+        suggestions = _smart_provider_suggestions(user, standort)
+        if suggestions:
+            form.initial.setdefault("angefragte_provider", [p.pk for p in suggestions])
 
     return render(request, "core/beauftragung_form.html", {"form": form})
 
@@ -790,8 +968,16 @@ def beauftragung_detail(request, pk):
                     f"mailto:{provider.kontakt_mail or ''}"
                     f"?subject={quote(subject)}&body={quote(body)}"
                 ),
+                "total_cost": (kontext.angebot_kosten_monat_netto or Decimal("0.00")) + (kontext.angebot_kosten_einmalig_netto or Decimal("0.00")),
             }
         )
+
+    recommended = None
+    priced = [a for a in provider_anfragen if a["kontext"].angebot_kosten_monat_netto is not None or a["kontext"].angebot_kosten_einmalig_netto is not None]
+    if priced:
+        recommended = sorted(priced, key=lambda x: x["total_cost"])[0]
+
+    timeline = _timeline_for_object(beauftragung)
 
     return render(
         request,
@@ -799,7 +985,10 @@ def beauftragung_detail(request, pk):
         {
             "beauftragung": beauftragung,
             "can_edit": can_manage_beauftragung(user),
+            "can_approve": can_approve_beauftragung(user),
             "provider_anfragen": provider_anfragen,
+            "recommended_provider_id": recommended["provider"].id if recommended else None,
+            "timeline": timeline,
         },
     )
 
@@ -839,6 +1028,158 @@ def beauftragung_provider_kontext_update(request, beauftragung_pk, provider_pk):
 
 
 @login_required
+@user_passes_test(can_manage_beauftragung)
+def beauftragung_provider_anfrage_sent(request, beauftragung_pk, provider_pk):
+    kontext = get_object_or_404(
+        WanBeauftragungProviderKontext,
+        beauftragung_id=beauftragung_pk,
+        provider_id=provider_pk,
+    )
+    kontext.anfrage_gesendet_am = timezone.now()
+    kontext.anfrage_gesendet_von = request.user
+    kontext.save(update_fields=["anfrage_gesendet_am", "anfrage_gesendet_von"])
+    messages.success(request, "Anfrage als gesendet markiert.")
+    return redirect("core:beauftragung_detail", pk=beauftragung_pk)
+
+
+@login_required
+@user_passes_test(can_approve_beauftragung)
+def beauftragung_approve(request, pk):
+    beauftragung = get_object_or_404(WanBeauftragung, pk=pk)
+
+    if request.method != "POST":
+        return redirect("core:beauftragung_detail", pk=pk)
+
+    if beauftragung.genehmigt:
+        messages.info(request, "Diese Beauftragung ist bereits genehmigt.")
+        return redirect("core:beauftragung_detail", pk=pk)
+
+    note = (request.POST.get("genehmigungs_notiz") or "").strip()
+    try:
+        with transaction.atomic():
+            beauftragung.genehmigt = True
+            beauftragung.genehmigt_von = request.user
+            beauftragung.genehmigt_am = timezone.now()
+            beauftragung.genehmigungs_notiz = note or None
+            if beauftragung.status in {WanBeauftragung.STATUS_OFFEN, WanBeauftragung.STATUS_IN_PRUEFUNG}:
+                beauftragung.status = WanBeauftragung.STATUS_BEAUFTRAGT
+            _send_ticket_email_for_beauftragung(beauftragung, request.user)
+            beauftragung.ticket_gesendet_am = timezone.now()
+            beauftragung.save()
+        messages.success(request, "Genehmigt und ans Ticketsystem gesendet.")
+    except Exception as exc:
+        messages.error(request, f"Genehmigung fehlgeschlagen: {exc}")
+
+    return redirect("core:beauftragung_detail", pk=pk)
+
+
+@login_required
+def my_tasks(request):
+    user = request.user
+    today = timezone.localdate()
+    my_reminders = Erinnerung.objects.filter(zugewiesen_an=user).order_by("status", "faellig_am")
+    my_beauftragungen = WanBeauftragung.objects.filter(
+        Q(erstellt_von=user) | Q(provider_kontexte__anfrage_gesendet_von=user)
+    ).distinct().order_by("-angefragt_am")
+    overdues = my_reminders.filter(status=Erinnerung.STATUS_OFFEN, faellig_am__lt=today).count()
+
+    return render(
+        request,
+        "core/my_tasks.html",
+        {
+            "my_reminders": my_reminders[:50],
+            "my_beauftragungen": my_beauftragungen[:30],
+            "overdues": overdues,
+            "unread_notifications": unread_notifications_count(user),
+        },
+    )
+
+
+@login_required
+def notification_list(request):
+    qs = UserNotification.objects.filter(user=request.user)
+    if request.method == "POST":
+        if request.POST.get("mark_all") == "1":
+            qs.filter(gelesen=False).update(gelesen=True)
+            messages.success(request, "Alle Benachrichtigungen als gelesen markiert.")
+            return redirect("core:notification_list")
+    return render(request, "core/notification_list.html", {"notifications": qs[:200]})
+
+
+@login_required
+def notification_mark_read(request, pk):
+    notification = get_object_or_404(UserNotification, pk=pk, user=request.user)
+    notification.gelesen = True
+    notification.save(update_fields=["gelesen"])
+    if notification.link:
+        return redirect(notification.link)
+    return redirect("core:notification_list")
+
+
+@login_required
+def save_filter(request):
+    if request.method != "POST":
+        return redirect("core:dashboard")
+    form = SavedFilterForm(request.POST)
+    if form.is_valid():
+        saved = form.save(commit=False)
+        saved.user = request.user
+        saved.save()
+        messages.success(request, "Filter gespeichert.")
+    else:
+        messages.error(request, "Filter konnte nicht gespeichert werden.")
+    target = request.POST.get("target")
+    if target == SavedFilter.TARGET_BEAUFTRAGUNG:
+        return redirect("core:beauftragung_list")
+    if target == SavedFilter.TARGET_ERINNERUNG:
+        return redirect("core:erinnerung_list")
+    return redirect("core:dashboard")
+
+
+@login_required
+def apply_filter(request, pk):
+    saved = get_object_or_404(SavedFilter, pk=pk, user=request.user)
+    if saved.target == SavedFilter.TARGET_BEAUFTRAGUNG:
+        return redirect(f"/beauftragungen/?{saved.querystring}")
+    if saved.target == SavedFilter.TARGET_ERINNERUNG:
+        return redirect(f"/erinnerungen/?{saved.querystring}")
+    if saved.target == SavedFilter.TARGET_STANDORT:
+        return redirect(f"/standorte/?{saved.querystring}")
+    return redirect("core:dashboard")
+
+
+@login_required
+def add_object_note(request, model_name, object_id):
+    model_map = {
+        "beauftragung": WanBeauftragung,
+        "vertrag": Vertrag,
+        "leitung": WanLeitung,
+        "standort": Standort,
+    }
+    model = model_map.get(model_name)
+    if not model:
+        return redirect("core:dashboard")
+    obj = get_object_or_404(model, pk=object_id)
+    text = (request.POST.get("text") or "").strip()
+    if text:
+        ObjektNotiz.objects.create(
+            content_type=ContentType.objects.get_for_model(model),
+            object_id=obj.pk,
+            text=text,
+            erstellt_von=request.user,
+        )
+        messages.success(request, "Notiz gespeichert.")
+
+    redirect_map = {
+        "beauftragung": "core:beauftragung_detail",
+        "vertrag": "core:vertrag_detail",
+        "leitung": "core:wanleitung_detail",
+        "standort": "core:standort_detail",
+    }
+    return redirect(redirect_map[model_name], pk=obj.pk)
+
+
+@login_required
 def erinnerung_list(request):
     user = request.user
     qs = Erinnerung.objects.select_related("vertrag", "beauftragung", "zugewiesen_an")
@@ -848,6 +1189,22 @@ def erinnerung_list(request):
             Q(vertrag__verwaltung_id=user.profile.verwaltung_id)
             | Q(beauftragung__standort__verwaltung_id=user.profile.verwaltung_id)
         )
+
+    if request.method == "POST":
+        action = request.POST.get("bulk_action")
+        ids = request.POST.getlist("selected")
+        target_user_id = request.POST.get("assign_user")
+        selected = qs.filter(id__in=ids)
+        if action in dict(Erinnerung.STATUS_CHOICES):
+            selected.update(status=action)
+            messages.success(request, f"{selected.count()} Erinnerungen aktualisiert.")
+        elif action == "assign_me":
+            selected.update(zugewiesen_an=user)
+            messages.success(request, f"{selected.count()} Erinnerungen dir zugewiesen.")
+        elif action == "assign_user" and target_user_id:
+            selected.update(zugewiesen_an_id=target_user_id)
+            messages.success(request, f"{selected.count()} Erinnerungen zugewiesen.")
+        return redirect("core:erinnerung_list")
 
     show = request.GET.get("show", "offen")
     today = timezone.localdate()
@@ -859,7 +1216,14 @@ def erinnerung_list(request):
     return render(
         request,
         "core/erinnerung_list.html",
-        {"erinnerungen": qs.order_by("faellig_am", "id"), "show": show, "today": today},
+        {
+            "erinnerungen": qs.order_by("faellig_am", "id"),
+            "show": show,
+            "today": today,
+            "saved_filters": SavedFilter.objects.filter(user=user, target=SavedFilter.TARGET_ERINNERUNG),
+            "status_choices": Erinnerung.STATUS_CHOICES,
+            "assignable_users": User.objects.filter(is_active=True).order_by("username")[:100],
+        },
     )
 
 
@@ -941,6 +1305,65 @@ def report_beauftragungen_csv(request):
     return response
 
 
+@login_required
+@user_passes_test(is_super_or_net_admin)
+def import_vertraege_csv(request):
+    if request.method == "POST":
+        form = CsvImportForm(request.POST, request.FILES)
+        if form.is_valid():
+            file = form.cleaned_data["csv_file"]
+            decoded = io.StringIO(file.read().decode("utf-8-sig"))
+            reader = csv.DictReader(decoded, delimiter=";")
+            created = 0
+            errors = 0
+            for row in reader:
+                try:
+                    verwaltung = Verwaltung.objects.filter(
+                        Q(kuerzel=row.get("verwaltung")) | Q(name=row.get("verwaltung"))
+                    ).first()
+                    if not verwaltung:
+                        errors += 1
+                        continue
+                    provider_ref = Provider.objects.filter(name=row.get("provider")).first()
+                    Vertrag.objects.create(
+                        verwaltung=verwaltung,
+                        provider_ref=provider_ref,
+                        provider=row.get("provider") or (provider_ref.kuerzel if provider_ref else "Unbekannt"),
+                        vertragsnummer=row.get("vertragsnummer") or "",
+                        kostenstelle=row.get("kostenstelle") or None,
+                    )
+                    created += 1
+                except Exception:
+                    errors += 1
+            messages.success(request, f"Import beendet: {created} erstellt, {errors} Fehler.")
+            return redirect("core:vertrag_list")
+    else:
+        form = CsvImportForm()
+    return render(request, "core/import_vertraege.html", {"form": form})
+
+
+@login_required
+def erinnerung_quick_done(request, pk):
+    erinnerung = get_object_or_404(Erinnerung, pk=pk)
+    erinnerung.status = Erinnerung.STATUS_ERLEDIGT
+    erinnerung.zugewiesen_an = request.user
+    erinnerung.save(update_fields=["status", "zugewiesen_an"])
+    messages.success(request, "Erinnerung als erledigt markiert.")
+    return redirect("core:erinnerung_list")
+
+
+@login_required
+@user_passes_test(can_manage_beauftragung)
+def beauftragung_set_status(request, pk, status):
+    beauftragung = get_object_or_404(WanBeauftragung, pk=pk)
+    valid = {value for value, _label in WanBeauftragung.STATUS_CHOICES}
+    if status in valid:
+        beauftragung.status = status
+        beauftragung.save(update_fields=["status"])
+        messages.success(request, f"Status auf {beauftragung.get_status_display()} gesetzt.")
+    return redirect("core:beauftragung_detail", pk=pk)
+
+
 # ---------------------------- Verträge ----------------------------
 
 @login_required
@@ -1012,5 +1435,10 @@ def vertrag_detail(request, pk):
     return render(
         request,
         "core/vertrag_detail.html",
-        {"vertrag": vertrag, "leitungen": leitungen, "can_edit": is_super_or_net_admin(user)},
+        {
+            "vertrag": vertrag,
+            "leitungen": leitungen,
+            "can_edit": is_super_or_net_admin(user),
+            "timeline": _timeline_for_object(vertrag),
+        },
     )

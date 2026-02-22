@@ -61,6 +61,7 @@
 
         <div class="space-x-4 text-sm">
             <a href="{% url 'core:dashboard' %}" class="hover:text-gray-200">Dashboard</a>
+            <a href="{% url 'core:my_tasks' %}" class="hover:text-gray-200">Meine Aufgaben</a>
             <a href="{% url 'core:verwaltung_list' %}" class="hover:text-gray-200">Verwaltungen</a>
             <a href="{% url 'core:standort_list' %}" class="hover:text-gray-200">Standorte</a>
             <a href="{% url 'core:wanleitung_list' %}" class="hover:text-gray-200">Leitungen</a>
@@ -70,6 +71,10 @@
             <a href="{% url 'core:provider_option_list' %}" class="hover:text-gray-200">Provider-Optionen</a>
             <a href="{% url 'core:vertrag_list' %}" class="hover:text-gray-200">Verträge</a>
             <a href="{% url 'core:erinnerung_list' %}" class="hover:text-gray-200">Erinnerungen</a>
+            <a href="{% url 'core:notification_list' %}" class="hover:text-gray-200">
+                Inbox{% if unread_notifications %} ({{ unread_notifications }}){% endif %}
+            </a>
+            <a href="{% url 'core:import_vertraege_csv' %}" class="hover:text-gray-200">CSV-Import</a>
             <a href="{% url 'core:report_vertraege_csv' %}" class="hover:text-gray-200">Export Verträge</a>
             <a href="{% url 'core:report_beauftragungen_csv' %}" class="hover:text-gray-200">Export Beauftragungen</a>
         </div>
@@ -101,6 +106,13 @@
 </nav>
 
 <div class="max-w-7xl mx-auto px-4 pb-8">
+    {% if messages %}
+        <div class="space-y-2 mb-4">
+            {% for message in messages %}
+                <div class="rounded border border-blue-200 bg-blue-50 text-blue-900 px-3 py-2 text-sm">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
     {% block content %}{% endblock %}
 </div>
 

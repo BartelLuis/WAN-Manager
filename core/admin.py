@@ -17,6 +17,9 @@ from .models import (
     AuditLog,
     Erinnerung,
     DokumentAnhang,
+    ObjektNotiz,
+    UserNotification,
+    SavedFilter,
 )
 
 
@@ -63,7 +66,7 @@ class WanLeitungAdmin(admin.ModelAdmin):
 
 @admin.register(WanBeauftragung)
 class WanBeauftragungAdmin(admin.ModelAdmin):
-    list_display = ("titel", "standort", "status", "prioritaet", "angefragt_am", "umsetzung_bis", "erstellt_von")
+    list_display = ("titel", "standort", "status", "genehmigt", "prioritaet", "angefragt_am", "umsetzung_bis", "erstellt_von")
     list_filter = ("status", "prioritaet", "standort__verwaltung")
     search_fields = ("titel", "ticket_nummer", "standort__name", "standort__standort_code")
     filter_horizontal = ("angefragte_provider",)
@@ -71,7 +74,7 @@ class WanBeauftragungAdmin(admin.ModelAdmin):
 
 @admin.register(WanBeauftragungProviderKontext)
 class WanBeauftragungProviderKontextAdmin(admin.ModelAdmin):
-    list_display = ("beauftragung", "provider", "tarif")
+    list_display = ("beauftragung", "provider", "tarif", "angebot_kosten_monat_netto", "angebot_umsetzungstage", "empfohlen")
     list_filter = ("provider", "beauftragung__standort__verwaltung")
     search_fields = ("beauftragung__titel", "provider__name", "provider__kuerzel")
     filter_horizontal = ("zusatzoptionen",)
@@ -116,7 +119,7 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(GlobalSettings)
 class GlobalSettingsAdmin(admin.ModelAdmin):
-    list_display = ("id", "mbit_pro_arbeitsplatz")
+    list_display = ("id", "mbit_pro_arbeitsplatz", "ticket_system_email", "ticket_header_name")
 
     def has_add_permission(self, request):
         if GlobalSettings.objects.exists():
@@ -150,6 +153,27 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ObjektNotiz)
+class ObjektNotizAdmin(admin.ModelAdmin):
+    list_display = ("content_type", "object_id", "erstellt_von", "erstellt_am")
+    list_filter = ("content_type", "erstellt_am")
+    search_fields = ("text",)
+
+
+@admin.register(UserNotification)
+class UserNotificationAdmin(admin.ModelAdmin):
+    list_display = ("user", "titel", "gelesen", "erstellt_am")
+    list_filter = ("gelesen", "erstellt_am")
+    search_fields = ("titel", "nachricht", "user__username")
+
+
+@admin.register(SavedFilter)
+class SavedFilterAdmin(admin.ModelAdmin):
+    list_display = ("user", "target", "name", "created_at")
+    list_filter = ("target",)
+    search_fields = ("name", "querystring", "user__username")
 
 
 admin.site.unregister(User)

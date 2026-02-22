@@ -1,13 +1,17 @@
 from datetime import timedelta
 
 from django.contrib.auth.models import User
+from django.core import mail
 from django.core.management import call_command
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from .forms import WanBeauftragungForm, WanLeitungForm
 from .models import (
     Erinnerung,
+    SavedFilter,
+    UserNotification,
     Provider,
     Standort,
     Tarif,
@@ -174,3 +178,83 @@ class ReminderCommandTests(TestCase):
         call_command("generate_erinnerungen", "--days", "0")
         reminder = Erinnerung.objects.get(vertrag=vertrag)
         self.assertEqual(reminder.status, Erinnerung.STATUS_UEBERFAELLIG)
+
+
+class UserFeatureTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alice", password="pw")
+        self.admin = User.objects.create_user(username="boss", password="pw", is_superuser=True, is_staff=True)
+        self.verwaltung = Verwaltung.objects.create(name="Musterverwaltung", kuerzel="MUS")
+        self.provider = Provider.objects.create(name="Provider A", kuerzel="PA")
+        self.standort = Standort.objects.create(
+            verwaltung=self.verwaltung,
+            name="Rathaus",
+            adresse_ort="Neustadt",
+            adresse_strasse="Hauptstraße 1",
+        )
+
+    def test_saved_filter_create_and_apply(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("core:save_filter"),
+            {"target": "erinnerung", "name": "Nur offen", "querystring": "show=offen"},
+        )
+        self.assertEqual(response.status_code, 302)
+        filt = SavedFilter.objects.get(user=self.user)
+        response = self.client.get(reverse("core:apply_filter", args=[filt.id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/erinnerungen/?show=offen", response.url)
+
+    def test_notifications_created_on_beauftragung(self):
+        self.client.force_login(self.admin)
+        self.client.post(
+            reverse("core:beauftragung_create"),
+            {
+                "standort": self.standort.pk,
+                "titel": "Neue Leitung",
+                "status": WanBeauftragung.STATUS_OFFEN,
+                "prioritaet": WanBeauftragung.PRIO_NORMAL,
+            },
+        )
+        self.assertTrue(UserNotification.objects.filter(user=self.admin).exists())
+
+    def test_my_tasks_view(self):
+        beauftragung = WanBeauftragung.objects.create(
+            standort=self.standort,
+            erstellt_von=self.user,
+            titel="Task",
+        )
+        Erinnerung.objects.create(
+            titel="Reminder",
+            typ=Erinnerung.TYP_BEAUFTRAGUNG,
+            status=Erinnerung.STATUS_OFFEN,
+            faellig_am=timezone.localdate(),
+            beauftragung=beauftragung,
+            zugewiesen_an=self.user,
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("core:my_tasks"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Meine Aufgaben")
+
+    def test_approver_can_approve_and_sends_ticket_mail_with_header(self):
+        beauftragung = WanBeauftragung.objects.create(
+            standort=self.standort,
+            erstellt_von=self.user,
+            titel="Genehmigungstest",
+            ticket_nummer="INC-12345",
+            status=WanBeauftragung.STATUS_IN_PRUEFUNG,
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("core:beauftragung_approve", args=[beauftragung.id]),
+            {"genehmigungs_notiz": "Freigabe erteilt."},
+        )
+        self.assertEqual(response.status_code, 302)
+        beauftragung.refresh_from_db()
+        self.assertTrue(beauftragung.genehmigt)
+        self.assertEqual(beauftragung.genehmigt_von, self.admin)
+        self.assertIsNotNone(beauftragung.ticket_gesendet_am)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["tickets@example.local"])
+        self.assertEqual(mail.outbox[0].extra_headers.get("X-Ticket-Nummer"), "INC-12345")

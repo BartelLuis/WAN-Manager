@@ -62,6 +62,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'core.context_processors.notification_context',
             ],
         },
     },
@@ -136,3 +137,6 @@ LOGOUT_REDIRECT_URL = "/login/"
 
 STATICFILES_DIRS = []  # optional, wenn du eigene statics hast
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"

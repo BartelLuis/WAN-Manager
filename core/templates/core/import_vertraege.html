@@ -1,0 +1,16 @@
+{% extends "core/base.html" %}
+
+{% block title %}Verträge importieren{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded shadow p-6 max-w-2xl">
+    <h1 class="text-2xl font-semibold mb-4">CSV-Import Verträge</h1>
+    <p class="text-sm text-gray-600 mb-4">Erwartete Spalten (Semikolon): <code>verwaltung;provider;vertragsnummer;kostenstelle</code></p>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="bg-brand text-white px-4 py-2 rounded text-sm">Import starten</button>
+    </form>
+</div>
+{% endblock %}

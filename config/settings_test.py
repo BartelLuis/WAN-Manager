@@ -10,3 +10,6 @@ DATABASES = {
 MIGRATION_MODULES = {
     "core": None,
 }
+
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+TICKET_SYSTEM_EMAIL = "tickets@example.local"

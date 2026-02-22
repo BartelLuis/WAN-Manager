@@ -369,6 +369,17 @@ class WanBeauftragung(models.Model):
 
     kostenrahmen_monat_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     kostenrahmen_einmalig_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    genehmigt = models.BooleanField(default=False)
+    genehmigt_von = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="genehmigte_beauftragungen",
+    )
+    genehmigt_am = models.DateTimeField(blank=True, null=True)
+    genehmigungs_notiz = models.TextField(blank=True, null=True)
+    ticket_gesendet_am = models.DateTimeField(blank=True, null=True)
 
     begruendung = models.TextField(blank=True, null=True)
     bemerkung = models.TextField(blank=True, null=True)
@@ -449,6 +460,25 @@ class WanBeauftragungProviderKontext(models.Model):
     zusatzoptionen = models.ManyToManyField(ProviderZusatzoption, blank=True, related_name="beauftragungs_kontexte")
     template_override_text = models.TextField(blank=True, null=True)
     anfrage_notiz = models.TextField(blank=True, null=True)
+    angebot_kosten_monat_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    angebot_kosten_einmalig_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    angebot_umsetzungstage = models.PositiveIntegerField(blank=True, null=True)
+    angebot_score = models.DecimalField(
+        max_digits=4,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        help_text="Subjektive Bewertung 0.0 bis 10.0",
+    )
+    empfohlen = models.BooleanField(default=False)
+    anfrage_gesendet_am = models.DateTimeField(blank=True, null=True)
+    anfrage_gesendet_von = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="provider_anfragen_gesendet",
+    )
 
     class Meta:
         unique_together = ("beauftragung", "provider")
@@ -486,6 +516,62 @@ class DokumentAnhang(models.Model):
 
     def __str__(self):
         return self.bezeichnung
+
+
+class ObjektNotiz(models.Model):
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+    text = models.TextField()
+    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    erstellt_am = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-erstellt_am", "-id"]
+
+    def __str__(self):
+        return f"Notiz {self.content_type}#{self.object_id}"
+
+
+class UserNotification(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    titel = models.CharField(max_length=255)
+    nachricht = models.TextField(blank=True, null=True)
+    link = models.CharField(max_length=255, blank=True, null=True)
+    gelesen = models.BooleanField(default=False)
+    erstellt_am = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["gelesen", "-erstellt_am", "-id"]
+
+    def __str__(self):
+        return f"{self.user} - {self.titel}"
+
+
+class SavedFilter(models.Model):
+    TARGET_ERINNERUNG = "erinnerung"
+    TARGET_BEAUFTRAGUNG = "beauftragung"
+    TARGET_STANDORT = "standort"
+    TARGET_CHOICES = [
+        (TARGET_ERINNERUNG, "Erinnerungen"),
+        (TARGET_BEAUFTRAGUNG, "Beauftragungen"),
+        (TARGET_STANDORT, "Standorte"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="saved_filters")
+    target = models.CharField(max_length=40, choices=TARGET_CHOICES)
+    name = models.CharField(max_length=80)
+    querystring = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["target", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "target", "name"], name="uniq_filter_name_per_target"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.target} - {self.name}"
 
 
 class Erinnerung(models.Model):
@@ -586,6 +672,17 @@ class GlobalSettings(models.Model):
             "{umsetzung_bis}, {titel}, {ticket_nummer}, {tarif_name}, {zusatzoptionen}"
         ),
     )
+    ticket_system_email = models.EmailField(
+        blank=True,
+        null=True,
+        verbose_name="Ticketsystem E-Mail",
+        help_text="An diese Adresse wird nach Genehmigung automatisch gesendet.",
+    )
+    ticket_header_name = models.CharField(
+        max_length=100,
+        default="X-Ticket-Nummer",
+        verbose_name="Headername Ticketnummer",
+    )
 
     def save(self, *args, **kwargs):
         self.pk = 1  # erzwingt genau einen Datensatz
@@ -607,6 +704,8 @@ AUDITED_MODELS = (
     Tarif,
     Erinnerung,
     DokumentAnhang,
+    ObjektNotiz,
+    SavedFilter,
 )
 
 
@@ -686,4 +785,52 @@ def _create_audit_log_on_delete(sender, instance, **kwargs):
         changed_fields=[],
         snapshot=snapshot,
     )
+
+
+def _users_for_ops_notifications():
+    return User.objects.filter(
+        Q(is_superuser=True)
+        | Q(groups__name__in=["SUPERADMIN", "NETZADMIN", "IT-BEAUFTRAGTER", "EINKAEUFER", "EINKAUFER"])
+    ).distinct()
+
+
+@receiver(post_save, sender=Erinnerung)
+def _notify_on_reminder(sender, instance, created, **kwargs):
+    recipients = []
+    if instance.zugewiesen_an_id:
+        recipients = [instance.zugewiesen_an]
+    else:
+        recipients = list(_users_for_ops_notifications())
+
+    if created:
+        title = f"Neue Erinnerung: {instance.titel}"
+    else:
+        title = f"Erinnerung aktualisiert: {instance.titel}"
+
+    for user in recipients:
+        UserNotification.objects.create(
+            user=user,
+            titel=title,
+            nachricht=f"Fällig am {instance.faellig_am:%d.%m.%Y} ({instance.get_status_display()})",
+            link="/erinnerungen/",
+        )
+
+
+@receiver(post_save, sender=WanBeauftragung)
+def _notify_on_beauftragung(sender, instance, created, **kwargs):
+    if created:
+        title = f"Neue Beauftragung: {instance.titel}"
+    else:
+        previous = getattr(instance, "_audit_before", None) or {}
+        if previous.get("status") == instance.status:
+            return
+        title = f"Status geändert: {instance.titel}"
+
+    for user in _users_for_ops_notifications():
+        UserNotification.objects.create(
+            user=user,
+            titel=title,
+            nachricht=f"Status: {instance.get_status_display()}",
+            link=f"/beauftragungen/{instance.pk}/",
+        )
 

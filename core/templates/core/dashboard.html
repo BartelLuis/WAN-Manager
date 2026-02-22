@@ -3,7 +3,25 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<h1 class="text-2xl font-semibold mb-6">Dashboard</h1>
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold">Dashboard</h1>
+        <p class="text-sm text-gray-600">Rolle: {{ role_label }}</p>
+    </div>
+    <div class="text-sm flex gap-2">
+        <a href="{% url 'core:my_tasks' %}" class="bg-white border px-3 py-2 rounded hover:bg-gray-50">Meine Aufgaben</a>
+        <a href="{% url 'core:notification_list' %}" class="bg-white border px-3 py-2 rounded hover:bg-gray-50">Inbox ({{ unread_notifications }})</a>
+    </div>
+</div>
+
+<div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    {% for c in risk_cards %}
+        <a href="{% url c.link %}" class="bg-white shadow rounded-lg p-4 hover:shadow-md">
+            <div class="text-xs uppercase text-gray-500">{{ c.label }}</div>
+            <div class="text-2xl font-semibold mt-2">{{ c.value }}</div>
+        </a>
+    {% endfor %}
+</div>
 
 <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
     {% for v in verwaltungen %}

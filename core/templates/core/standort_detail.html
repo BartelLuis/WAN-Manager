@@ -119,4 +119,34 @@
         </tbody>
     </table>
 </div>
+
+<div class="grid md:grid-cols-2 gap-6 mt-6">
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Timeline</h2>
+        <div class="space-y-2 text-sm">
+            {% for t in timeline %}
+                <div class="border-l-2 border-gray-300 pl-3">
+                    <div class="text-xs text-gray-500">{{ t.time|date:"d.m.Y H:i" }}</div>
+                    {% if t.kind == "audit" %}
+                        <div>Änderung: {{ t.item.action }}</div>
+                    {% elif t.kind == "note" %}
+                        <div>Notiz: {{ t.item.text }}</div>
+                    {% else %}
+                        <div>Anhang: {{ t.item.bezeichnung }}</div>
+                    {% endif %}
+                </div>
+            {% empty %}
+                <div class="text-gray-500">Keine Timeline-Einträge.</div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Notiz hinzufügen</h2>
+        <form method="post" action="{% url 'core:add_object_note' 'standort' standort.id %}">
+            {% csrf_token %}
+            <textarea name="text" rows="5" placeholder="Kurznotiz..."></textarea>
+            <button type="submit" class="mt-2 bg-brand text-white px-4 py-2 rounded text-sm">Speichern</button>
+        </form>
+    </div>
+</div>
 {% endblock %}

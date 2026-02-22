@@ -18,6 +18,20 @@
                 Suchen
             </button>
         </form>
+        <form method="post" action="{% url 'core:save_filter' %}" class="flex items-center gap-2">
+            {% csrf_token %}
+            <input type="hidden" name="target" value="beauftragung" />
+            <input type="hidden" name="querystring" value="q={{ search|default:'' }}" />
+            <input type="text" name="name" placeholder="Filtername" class="w-28" />
+            <button type="submit" class="bg-gray-100 px-2 py-2 rounded text-xs hover:bg-gray-200">Filter speichern</button>
+        </form>
+        {% if saved_filters %}
+            <div class="text-xs">
+                {% for f in saved_filters %}
+                    <a href="{% url 'core:apply_filter' f.id %}" class="underline mr-2">{{ f.name }}</a>
+                {% endfor %}
+            </div>
+        {% endif %}
 
         {% if can_create_beauftragung %}
             <a href="{% url 'core:beauftragung_create' %}"
@@ -29,9 +43,22 @@
 </div>
 
 <div class="bg-white shadow rounded-lg overflow-hidden">
-    <table class="min-w-full">
+    <form method="post">
+        {% csrf_token %}
+        <div class="border-b px-4 py-3 flex flex-wrap gap-2 items-center">
+            <select name="bulk_action" class="w-56">
+                <option value="">Bulk-Aktion...</option>
+                {% for value,label in status_choices %}
+                    <option value="{{ value }}">Status: {{ label }}</option>
+                {% endfor %}
+                <option value="delete">Löschen</option>
+            </select>
+            <button type="submit" class="bg-gray-800 text-white px-3 py-2 rounded text-sm">Ausführen</button>
+        </div>
+        <table class="min-w-full">
         <thead class="bg-gray-100 text-xs font-semibold uppercase text-gray-600">
             <tr>
+                <th class="px-4 py-3 text-left">#</th>
                 <th class="px-4 py-3 text-left">Titel</th>
                 <th class="px-4 py-3 text-left">Standort</th>
                 <th class="px-4 py-3 text-left">Status</th>
@@ -44,6 +71,7 @@
         <tbody class="text-sm divide-y divide-gray-100">
             {% for b in beauftragungen %}
                 <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2"><input type="checkbox" name="selected" value="{{ b.id }}" /></td>
                     <td class="px-4 py-2">
                         <a href="{% url 'core:beauftragung_detail' b.id %}"
                            class="text-brand hover:underline">
@@ -67,12 +95,13 @@
                 </tr>
             {% empty %}
                 <tr>
-                    <td colspan="7" class="px-4 py-4 text-center text-gray-500">
+                    <td colspan="8" class="px-4 py-4 text-center text-gray-500">
                         Keine WAN-Beauftragungen vorhanden.
                     </td>
                 </tr>
             {% endfor %}
         </tbody>
-    </table>
+        </table>
+    </form>
 </div>
 {% endblock %}

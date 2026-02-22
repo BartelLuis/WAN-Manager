@@ -98,6 +98,14 @@ python manage.py generate_erinnerungen --dry-run
 python manage.py generate_erinnerungen --days 45
 ```
 
+Neue UI-Features (MVP):
+- `Meine Aufgaben`: `/my-tasks/`
+- `Inbox`: `/notifications/`
+- `Erinnerungen`: Bulk-Aktionen + gespeicherte Filter
+- `Beauftragungen`: Bulk-Status, Angebotsvergleich, E-Mail-Tracking
+- `CSV-Import Verträge`: `/imports/vertraege/`
+- `Genehmiger-Flow`: Beauftragung genehmigen + automatische Ticket-Mail mit Header `X-Ticket-Nummer` (konfigurierbar in `GlobalSettings`)
+
 ## Kurztest
 
 ```bash

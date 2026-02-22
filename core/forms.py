@@ -10,6 +10,7 @@ from .models import (
     Provider,
     ProviderZusatzoption,
     Tarif,
+    SavedFilter,
 )
 
 
@@ -329,6 +330,11 @@ class WanBeauftragungProviderKontextForm(forms.ModelForm):
         fields = [
             "tarif",
             "zusatzoptionen",
+            "angebot_kosten_monat_netto",
+            "angebot_kosten_einmalig_netto",
+            "angebot_umsetzungstage",
+            "angebot_score",
+            "empfohlen",
             "template_override_text",
             "anfrage_notiz",
         ]
@@ -361,3 +367,13 @@ class WanBeauftragungProviderKontextForm(forms.ModelForm):
                 self.add_error("zusatzoptionen", "Mindestens eine Zusatzoption gehoert nicht zum Provider.")
 
         return cleaned
+
+
+class SavedFilterForm(forms.ModelForm):
+    class Meta:
+        model = SavedFilter
+        fields = ["target", "name", "querystring"]
+
+
+class CsvImportForm(forms.Form):
+    csv_file = forms.FileField(label="CSV-Datei")

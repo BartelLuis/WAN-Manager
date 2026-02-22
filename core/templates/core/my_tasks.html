@@ -1,0 +1,53 @@
+{% extends "core/base.html" %}
+
+{% block title %}Meine Aufgaben{% endblock %}
+
+{% block content %}
+<div class="grid md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded shadow p-4">
+        <div class="text-xs uppercase text-gray-500">Überfällig</div>
+        <div class="text-2xl font-semibold">{{ overdues }}</div>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <div class="text-xs uppercase text-gray-500">Meine Erinnerungen</div>
+        <div class="text-2xl font-semibold">{{ my_reminders|length }}</div>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <div class="text-xs uppercase text-gray-500">Meine Beauftragungen</div>
+        <div class="text-2xl font-semibold">{{ my_beauftragungen|length }}</div>
+    </div>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6">
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="font-semibold mb-3">Erinnerungen</h2>
+        <div class="space-y-2 text-sm">
+            {% for e in my_reminders %}
+                <div class="border rounded p-2 flex justify-between gap-2">
+                    <div>
+                        <div>{{ e.titel }}</div>
+                        <div class="text-xs text-gray-500">{{ e.faellig_am|date:"d.m.Y" }} | {{ e.get_status_display }}</div>
+                    </div>
+                    <a href="{% url 'core:erinnerung_quick_done' e.id %}" class="text-xs bg-emerald-600 text-white px-2 py-1 rounded h-fit">Erledigt</a>
+                </div>
+            {% empty %}
+                <p class="text-gray-500">Keine Aufgaben.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="font-semibold mb-3">Beauftragungen</h2>
+        <div class="space-y-2 text-sm">
+            {% for b in my_beauftragungen %}
+                <a href="{% url 'core:beauftragung_detail' b.id %}" class="block border rounded p-2 hover:bg-gray-50">
+                    <div>{{ b.titel }}</div>
+                    <div class="text-xs text-gray-500">{{ b.get_status_display }} | {{ b.angefragt_am|date:"d.m.Y" }}</div>
+                </a>
+            {% empty %}
+                <p class="text-gray-500">Keine Beauftragungen.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -6,12 +6,17 @@
 <div class="flex justify-between items-center mb-4">
     <h1 class="text-2xl font-semibold">WAN-Beauftragung</h1>
 
-    {% if can_edit %}
-        <a href="{% url 'core:beauftragung_update' beauftragung.id %}"
-           class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
-            Bearbeiten
-        </a>
-    {% endif %}
+    <div class="flex gap-2 flex-wrap justify-end">
+        {% if can_edit %}
+            <a href="{% url 'core:beauftragung_update' beauftragung.id %}"
+               class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+                Bearbeiten
+            </a>
+        {% endif %}
+        <a href="{% url 'core:beauftragung_set_status' beauftragung.id 'in_pruefung' %}" class="bg-yellow-500 text-white px-3 py-2 rounded text-xs">In Prüfung</a>
+        <a href="{% url 'core:beauftragung_set_status' beauftragung.id 'beauftragt' %}" class="bg-blue-600 text-white px-3 py-2 rounded text-xs">Beauftragt</a>
+        <a href="{% url 'core:beauftragung_set_status' beauftragung.id 'umgesetzt' %}" class="bg-emerald-600 text-white px-3 py-2 rounded text-xs">Umgesetzt</a>
+    </div>
 </div>
 
 <div class="grid md:grid-cols-2 gap-6 mb-8">
@@ -107,6 +112,50 @@
     </div>
 </div>
 
+<div class="bg-white shadow rounded-lg p-4 mb-6">
+    <h2 class="text-lg font-semibold mb-3">Genehmigung</h2>
+    <dl class="text-sm space-y-2 mb-3">
+        <div>
+            <dt class="font-semibold text-gray-600">Status</dt>
+            <dd>
+                {% if beauftragung.genehmigt %}
+                    <span class="text-emerald-700 font-semibold">Genehmigt</span>
+                {% else %}
+                    <span class="text-amber-700 font-semibold">Ausstehend</span>
+                {% endif %}
+            </dd>
+        </div>
+        <div>
+            <dt class="font-semibold text-gray-600">Genehmigt von / am</dt>
+            <dd>
+                {% if beauftragung.genehmigt %}
+                    {{ beauftragung.genehmigt_von|default:"-" }} am {{ beauftragung.genehmigt_am|date:"d.m.Y H:i" }}
+                {% else %}
+                    -
+                {% endif %}
+            </dd>
+        </div>
+        <div>
+            <dt class="font-semibold text-gray-600">Ticketsystem gesendet</dt>
+            <dd>{{ beauftragung.ticket_gesendet_am|date:"d.m.Y H:i"|default:"-" }}</dd>
+        </div>
+    </dl>
+
+    {% if beauftragung.genehmigungs_notiz %}
+        <p class="text-sm bg-gray-50 border border-gray-200 rounded p-2 mb-3 whitespace-pre-wrap">{{ beauftragung.genehmigungs_notiz }}</p>
+    {% endif %}
+
+    {% if can_approve and not beauftragung.genehmigt %}
+        <form method="post" action="{% url 'core:beauftragung_approve' beauftragung.id %}" class="space-y-2">
+            {% csrf_token %}
+            <textarea name="genehmigungs_notiz" rows="3" placeholder="Optionaler Genehmigungsvermerk"></textarea>
+            <button type="submit" class="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
+                Genehmigen und Ticket-Mail senden
+            </button>
+        </form>
+    {% endif %}
+</div>
+
 <div class="bg-white shadow rounded-lg p-4">
     <h2 class="text-lg font-semibold mb-3">Begründung & Notizen</h2>
 
@@ -158,8 +207,17 @@
                                class="bg-emerald-600 text-white px-3 py-2 rounded text-xs hover:bg-emerald-700">
                                 Anfrage per E-Mail oeffnen
                             </a>
+                            {% if can_edit %}
+                                <a href="{% url 'core:beauftragung_provider_anfrage_sent' beauftragung.id anfrage.provider.id %}"
+                                   class="bg-gray-700 text-white px-3 py-2 rounded text-xs hover:bg-gray-900">
+                                    Als gesendet markieren
+                                </a>
+                            {% endif %}
                         </div>
                     </div>
+                    {% if recommended_provider_id == anfrage.provider.id %}
+                        <p class="text-xs mb-2 inline-block bg-emerald-100 text-emerald-800 px-2 py-1 rounded">Empfehlung (niedrigste Kosten)</p>
+                    {% endif %}
 
                     <dl class="text-xs text-gray-700 grid md:grid-cols-2 gap-2 mb-2">
                         <div>
@@ -182,13 +240,41 @@
                                 {% endfor %}
                             </dd>
                         </div>
+                        <div>
+                            <dt class="font-semibold">Angebot monatlich</dt>
+                            <dd>{{ anfrage.kontext.angebot_kosten_monat_netto|default:"-" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="font-semibold">Angebot einmalig</dt>
+                            <dd>{{ anfrage.kontext.angebot_kosten_einmalig_netto|default:"-" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="font-semibold">Umsetzung (Tage)</dt>
+                            <dd>{{ anfrage.kontext.angebot_umsetzungstage|default:"-" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="font-semibold">Gesendet am</dt>
+                            <dd>
+                                {% if anfrage.kontext.anfrage_gesendet_am %}
+                                    {{ anfrage.kontext.anfrage_gesendet_am|date:"d.m.Y H:i" }} durch {{ anfrage.kontext.anfrage_gesendet_von|default:"-" }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </dd>
+                        </div>
                     </dl>
 
                     <p class="text-xs uppercase text-gray-500 mb-1">Betreff</p>
-                    <p class="text-sm bg-gray-50 border border-gray-200 rounded p-2 mb-2">{{ anfrage.subject }}</p>
+                    <div class="flex gap-2 items-center mb-2">
+                        <p id="subject-{{ anfrage.provider.id }}" class="text-sm bg-gray-50 border border-gray-200 rounded p-2 flex-1">{{ anfrage.subject }}</p>
+                        <button type="button" class="text-xs bg-gray-200 px-2 py-1 rounded" onclick="navigator.clipboard.writeText(document.getElementById('subject-{{ anfrage.provider.id }}').innerText)">Kopieren</button>
+                    </div>
 
                     <p class="text-xs uppercase text-gray-500 mb-1">Text</p>
-                    <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-2 whitespace-pre-wrap">{{ anfrage.body }}</pre>
+                    <div class="flex gap-2 items-start">
+                        <pre id="body-{{ anfrage.provider.id }}" class="text-sm bg-gray-50 border border-gray-200 rounded p-2 whitespace-pre-wrap flex-1">{{ anfrage.body }}</pre>
+                        <button type="button" class="text-xs bg-gray-200 px-2 py-1 rounded" onclick="navigator.clipboard.writeText(document.getElementById('body-{{ anfrage.provider.id }}').innerText)">Kopieren</button>
+                    </div>
 
                     {% if anfrage.kontext.anfrage_notiz %}
                         <p class="text-xs uppercase text-gray-500 mt-2 mb-1">Notiz</p>
@@ -200,5 +286,35 @@
     {% else %}
         <p class="text-sm text-gray-500">Es wurden noch keine Provider fuer diese Beauftragung ausgewaehlt.</p>
     {% endif %}
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mt-6">
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Timeline</h2>
+        <div class="space-y-2 text-sm">
+            {% for t in timeline %}
+                <div class="border-l-2 border-gray-300 pl-3">
+                    <div class="text-xs text-gray-500">{{ t.time|date:"d.m.Y H:i" }}</div>
+                    {% if t.kind == "audit" %}
+                        <div>Änderung: {{ t.item.action }} ({{ t.item.changed_fields|default:"-" }})</div>
+                    {% elif t.kind == "note" %}
+                        <div>Notiz: {{ t.item.text }}</div>
+                    {% else %}
+                        <div>Anhang: {{ t.item.bezeichnung }}</div>
+                    {% endif %}
+                </div>
+            {% empty %}
+                <div class="text-gray-500">Keine Timeline-Einträge.</div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="bg-white shadow rounded-lg p-4">
+        <h2 class="text-lg font-semibold mb-3">Notiz hinzufügen</h2>
+        <form method="post" action="{% url 'core:add_object_note' 'beauftragung' beauftragung.id %}">
+            {% csrf_token %}
+            <textarea name="text" rows="5" placeholder="Kurznotiz..."></textarea>
+            <button type="submit" class="mt-2 bg-brand text-white px-4 py-2 rounded text-sm">Speichern</button>
+        </form>
+    </div>
 </div>
 {% endblock %}

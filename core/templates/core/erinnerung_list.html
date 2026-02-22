@@ -12,24 +12,58 @@
             <a href="?show=alle" class="px-3 py-1 rounded {% if show == 'alle' %}bg-blue-600 text-white{% else %}bg-gray-100{% endif %}">Alle</a>
         </div>
     </div>
+    <div class="mb-3 flex flex-wrap gap-2 items-center">
+        <form method="post" action="{% url 'core:save_filter' %}" class="flex items-center gap-2">
+            {% csrf_token %}
+            <input type="hidden" name="target" value="erinnerung" />
+            <input type="hidden" name="querystring" value="show={{ show }}" />
+            <input type="text" name="name" placeholder="Filtername" class="w-32" />
+            <button type="submit" class="bg-gray-100 px-2 py-1 rounded text-xs">Filter speichern</button>
+        </form>
+        {% for f in saved_filters %}
+            <a href="{% url 'core:apply_filter' f.id %}" class="underline text-xs">{{ f.name }}</a>
+        {% endfor %}
+    </div>
 
     <div class="text-sm text-gray-600 mb-3">Heute: {{ today|date:"d.m.Y" }}</div>
 
     <div class="overflow-x-auto">
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3 flex flex-wrap gap-2 items-center">
+                <select name="bulk_action" class="w-56">
+                    <option value="">Bulk-Aktion...</option>
+                    {% for value,label in status_choices %}
+                        <option value="{{ value }}">Status: {{ label }}</option>
+                    {% endfor %}
+                    <option value="assign_me">Mir zuweisen</option>
+                    <option value="assign_user">User zuweisen</option>
+                </select>
+                <select name="assign_user" class="w-52">
+                    <option value="">User wählen...</option>
+                    {% for u in assignable_users %}
+                        <option value="{{ u.id }}">{{ u.username }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="bg-gray-800 text-white px-3 py-2 rounded text-sm">Ausführen</button>
+            </div>
         <table class="w-full text-sm border-collapse">
             <thead>
                 <tr class="border-b">
+                    <th class="text-left py-2">#</th>
                     <th class="text-left py-2">Fällig am</th>
                     <th class="text-left py-2">Status</th>
                     <th class="text-left py-2">Typ</th>
                     <th class="text-left py-2">Titel</th>
                     <th class="text-left py-2">Bezug</th>
                     <th class="text-left py-2">Zugewiesen an</th>
+                    <th class="text-left py-2">Aktion</th>
                 </tr>
             </thead>
             <tbody>
                 {% for e in erinnerungen %}
                 <tr class="border-b">
+                    <td class="py-2"><input type="checkbox" name="selected" value="{{ e.id }}" /></td>
                     <td class="py-2">{{ e.faellig_am|date:"d.m.Y" }}</td>
                     <td class="py-2">{{ e.get_status_display }}</td>
                     <td class="py-2">{{ e.get_typ_display }}</td>
@@ -42,14 +76,18 @@
                         {% endif %}
                     </td>
                     <td class="py-2">{{ e.zugewiesen_an.username|default:"-" }}</td>
+                    <td class="py-2">
+                        <a href="{% url 'core:erinnerung_quick_done' e.id %}" class="text-xs bg-emerald-600 text-white px-2 py-1 rounded">Erledigt</a>
+                    </td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="6" class="py-4 text-gray-500">Keine Erinnerungen gefunden.</td>
+                    <td colspan="8" class="py-4 text-gray-500">Keine Erinnerungen gefunden.</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        </form>
     </div>
 </div>
 {% endblock %}

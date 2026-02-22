@@ -1,0 +1,28 @@
+{% extends "core/base.html" %}
+
+{% block title %}Benachrichtigungen{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded shadow p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h1 class="text-2xl font-semibold">Inbox</h1>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="mark_all" value="1" />
+            <button type="submit" class="bg-gray-800 text-white px-3 py-2 rounded text-sm">Alle als gelesen</button>
+        </form>
+    </div>
+
+    <div class="space-y-2">
+        {% for n in notifications %}
+            <a href="{% url 'core:notification_mark_read' n.id %}" class="block border rounded p-3 {% if not n.gelesen %}bg-blue-50 border-blue-200{% endif %}">
+                <div class="font-semibold text-sm">{{ n.titel }}</div>
+                <div class="text-sm text-gray-700">{{ n.nachricht|default:"" }}</div>
+                <div class="text-xs text-gray-500 mt-1">{{ n.erstellt_am|date:"d.m.Y H:i" }}</div>
+            </a>
+        {% empty %}
+            <p class="text-gray-500">Keine Benachrichtigungen.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
