@@ -5,6 +5,7 @@ from datetime import timedelta
 from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.models import User
 from django.contrib import messages
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
