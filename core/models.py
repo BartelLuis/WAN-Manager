@@ -218,11 +218,11 @@ class Vertrag(models.Model):
         ordering = ["provider", "vertragsnummer"]
         constraints = [
             models.CheckConstraint(
-                check=Q(laufzeit_von__isnull=True) | Q(laufzeit_bis__isnull=True) | Q(laufzeit_bis__gte=models.F("laufzeit_von")),
+                condition=Q(laufzeit_von__isnull=True) | Q(laufzeit_bis__isnull=True) | Q(laufzeit_bis__gte=models.F("laufzeit_von")),
                 name="vertrag_laufzeit_von_bis_valid",
             ),
             models.CheckConstraint(
-                check=Q(kuendigungsfrist_tage__isnull=True) | Q(kuendigungsfrist_tage__gte=0),
+                condition=Q(kuendigungsfrist_tage__isnull=True) | Q(kuendigungsfrist_tage__gte=0),
                 name="vertrag_kuendigungsfrist_non_negative",
             ),
         ]
@@ -284,11 +284,11 @@ class WanLeitung(models.Model):
         ordering = ["standort__verwaltung__name", "standort__name", "provider"]
         constraints = [
             models.CheckConstraint(
-                check=Q(vlan_id__isnull=True) | (Q(vlan_id__gte=1) & Q(vlan_id__lte=4094)),
+                condition=Q(vlan_id__isnull=True) | (Q(vlan_id__gte=1) & Q(vlan_id__lte=4094)),
                 name="wanleitung_vlan_in_valid_range",
             ),
             models.CheckConstraint(
-                check=Q(inbetriebnahme_datum__isnull=True) | Q(ausserbetriebnahme_datum__isnull=True) | Q(ausserbetriebnahme_datum__gte=models.F("inbetriebnahme_datum")),
+                condition=Q(inbetriebnahme_datum__isnull=True) | Q(ausserbetriebnahme_datum__isnull=True) | Q(ausserbetriebnahme_datum__gte=models.F("inbetriebnahme_datum")),
                 name="wanleitung_ausserbetriebnahme_after_inbetriebnahme",
             ),
         ]
@@ -388,7 +388,7 @@ class WanBeauftragung(models.Model):
         ordering = ["-angefragt_am", "-id"]
         constraints = [
             models.CheckConstraint(
-                check=Q(umsetzung_bis__isnull=True) | Q(angefragt_am__isnull=True) | Q(umsetzung_bis__gte=models.F("angefragt_am")),
+                condition=Q(umsetzung_bis__isnull=True) | Q(angefragt_am__isnull=True) | Q(umsetzung_bis__gte=models.F("angefragt_am")),
                 name="beauftragung_umsetzung_after_anfrage",
             ),
         ]
@@ -605,7 +605,7 @@ class Erinnerung(models.Model):
         ordering = ["status", "faellig_am", "id"]
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     (Q(vertrag__isnull=False) & Q(beauftragung__isnull=True) & Q(typ="vertrag"))
                     | (Q(vertrag__isnull=True) & Q(beauftragung__isnull=False) & Q(typ="beauftragung"))
                 ),
