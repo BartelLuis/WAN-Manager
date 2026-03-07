@@ -1,0 +1,6 @@
+Django>=5.2,<5.3
+mysqlclient>=2.2,<3.0
+
+# Optional for production WSGI runtime:
+# waitress>=3.0,<4.0   # Windows
+# gunicorn>=23.0,<24.0 # Linux
