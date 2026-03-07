@@ -7,6 +7,10 @@
     <h1 class="text-2xl font-semibold">WAN-Beauftragung</h1>
 
     <div class="flex gap-2 flex-wrap justify-end">
+        <a href="{% url 'core:dokument_mappe_create' 'beauftragung' beauftragung.id %}"
+           class="bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-900">
+            Dokumentmappe
+        </a>
         {% if can_edit %}
             <a href="{% url 'core:beauftragung_update' beauftragung.id %}"
                class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">

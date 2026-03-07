@@ -5,13 +5,18 @@
 {% block content %}
 <div class="flex justify-between items-center mb-4">
     <h1 class="text-2xl font-semibold">{{ standort.name }}</h1>
-
-    {% if can_edit %}
-        <a href="{% url 'core:standort_update' standort.id %}"
-           class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
-            Bearbeiten
+    <div class="flex gap-2">
+        <a href="{% url 'core:dokument_mappe_create' 'standort' standort.id %}"
+           class="bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-900">
+            Dokumentmappe
         </a>
-    {% endif %}
+        {% if can_edit %}
+            <a href="{% url 'core:standort_update' standort.id %}"
+               class="bg-brand text-white px-4 py-2 rounded text-sm hover:bg-brand-dark">
+                Bearbeiten
+            </a>
+        {% endif %}
+    </div>
 </div>
 
 <div class="grid md:grid-cols-2 gap-6 mb-8">

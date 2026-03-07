@@ -1,0 +1,9 @@
+{% extends "core/base.html" %}
+{% block title %}Dokumentenmappe{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Dokumentenmappe anlegen</h1>
+<div class="bg-white rounded shadow p-4">
+  <p class="text-sm text-gray-600 mb-3">Objekt: {{ obj }}</p>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button class="px-3 py-2 rounded bg-brand text-white" type="submit">Anlegen</button></form>
+</div>
+{% endblock %}

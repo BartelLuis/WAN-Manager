@@ -17,9 +17,14 @@ from .models import (
     AuditLog,
     Erinnerung,
     DokumentAnhang,
+    DokumentMappe,
+    DokumentVersion,
     ObjektNotiz,
     UserNotification,
     SavedFilter,
+    LeitungsStoerung,
+    ProviderBewertung,
+    ObjektBerechtigung,
 )
 
 
@@ -174,6 +179,41 @@ class SavedFilterAdmin(admin.ModelAdmin):
     list_display = ("user", "target", "name", "created_at")
     list_filter = ("target",)
     search_fields = ("name", "querystring", "user__username")
+
+
+@admin.register(LeitungsStoerung)
+class LeitungsStoerungAdmin(admin.ModelAdmin):
+    list_display = ("titel", "wanleitung", "provider", "status", "impact", "geoeffnet_am", "behoben_am")
+    list_filter = ("status", "impact", "wanleitung__standort__verwaltung", "provider")
+    search_fields = ("titel", "ticket_nummer", "wanleitung__standort__name", "wanleitung__standort__standort_code")
+
+
+@admin.register(ProviderBewertung)
+class ProviderBewertungAdmin(admin.ModelAdmin):
+    list_display = ("provider", "beauftragung", "gesamt_score", "erstellt_von", "erstellt_am")
+    list_filter = ("provider", "erstellt_am")
+    search_fields = ("provider__name", "beauftragung__titel", "kommentar")
+
+
+@admin.register(DokumentMappe)
+class DokumentMappeAdmin(admin.ModelAdmin):
+    list_display = ("titel", "status", "content_type", "object_id", "erstellt_am", "erstellt_von")
+    list_filter = ("status", "content_type")
+    search_fields = ("titel", "bemerkung")
+
+
+@admin.register(DokumentVersion)
+class DokumentVersionAdmin(admin.ModelAdmin):
+    list_display = ("mappe", "version", "freigegeben", "hochgeladen_am", "hochgeladen_von")
+    list_filter = ("freigegeben", "hochgeladen_am")
+    search_fields = ("mappe__titel", "changelog")
+
+
+@admin.register(ObjektBerechtigung)
+class ObjektBerechtigungAdmin(admin.ModelAdmin):
+    list_display = ("user", "action", "erlaubt", "content_type", "object_id", "erstellt_am")
+    list_filter = ("action", "erlaubt", "content_type")
+    search_fields = ("user__username",)
 
 
 admin.site.unregister(User)

@@ -1,0 +1,17 @@
+{% extends "core/base.html" %}
+{% block title %}Stoerungsdetail{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+<h1 class="text-2xl font-semibold">{{ stoerung.titel }}</h1>
+{% if can_edit %}<a class="px-3 py-2 rounded bg-brand text-white" href="{% url 'core:stoerung_update' stoerung.pk %}">Bearbeiten</a>{% endif %}
+</div>
+<div class="bg-white rounded shadow p-4 space-y-2 text-sm">
+<p><strong>Leitung:</strong> {{ stoerung.wanleitung }}</p>
+<p><strong>Provider:</strong> {{ stoerung.provider|default:'-' }}</p>
+<p><strong>Status:</strong> {{ stoerung.get_status_display }}</p>
+<p><strong>Impact:</strong> {{ stoerung.get_impact_display }}</p>
+<p><strong>Ticket:</strong> {{ stoerung.ticket_nummer|default:'-' }}</p>
+<p><strong>SLA verletzt:</strong> {% if stoerung.ist_sla_verletzt %}Ja{% else %}Nein{% endif %}</p>
+<p><strong>Beschreibung:</strong><br>{{ stoerung.beschreibung|default:'-'|linebreaksbr }}</p>
+</div>
+{% endblock %}

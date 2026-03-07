@@ -1,0 +1,29 @@
+{% extends "core/base.html" %}
+{% block title %}Stoerungen{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-semibold">Stoerungen</h1>
+  {% if can_create_stoerung %}<a href="{% url 'core:stoerung_create' %}" class="px-3 py-2 rounded bg-brand text-white">Neue Stoerung</a>{% endif %}
+</div>
+<form class="mb-4" method="get">
+  <select name="status" class="max-w-xs">
+    <option value="">Alle Status</option>
+    {% for key,label in status_choices %}
+      <option value="{{ key }}" {% if status == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button class="px-3 py-2 rounded bg-gray-800 text-white" type="submit">Filtern</button>
+</form>
+<div class="bg-white rounded shadow overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-50"><tr><th class="p-2 text-left">Titel</th><th class="p-2 text-left">Leitung</th><th class="p-2">Status</th><th class="p-2">Impact</th><th class="p-2">SLA</th></tr></thead>
+  <tbody>
+  {% for s in stoerungen %}
+    <tr class="border-t"><td class="p-2"><a class="text-blue-700" href="{% url 'core:stoerung_detail' s.pk %}">{{ s.titel }}</a></td><td class="p-2">{{ s.wanleitung }}</td><td class="p-2 text-center">{{ s.get_status_display }}</td><td class="p-2 text-center">{{ s.get_impact_display }}</td><td class="p-2 text-center">{% if s.ist_sla_verletzt %}<span class="text-red-600 font-semibold">Verletzt</span>{% else %}OK{% endif %}</td></tr>
+  {% empty %}
+    <tr><td class="p-3" colspan="5">Keine Stoerungen.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

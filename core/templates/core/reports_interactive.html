@@ -1,0 +1,20 @@
+{% extends "core/base.html" %}
+{% block title %}Interaktive Reports{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Interaktive Reports</h1>
+<div class="grid md:grid-cols-3 gap-4 mb-4">
+  <div class="bg-white rounded shadow p-4"><p class="text-sm text-gray-500">SLA-Verletzungen</p><p class="text-2xl font-bold">{{ kpi_sla_broken }}</p></div>
+  <div class="bg-white rounded shadow p-4"><p class="text-sm text-gray-500">Unterversorgte Standorte</p><p class="text-2xl font-bold">{{ kpi_under_supplied }}</p></div>
+  <div class="bg-white rounded shadow p-4"><p class="text-sm text-gray-500">Offene Störungen</p><p class="text-2xl font-bold">{{ kpi_open_stoerungen }}</p></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<div class="grid md:grid-cols-2 gap-4">
+  <div class="bg-white rounded shadow p-4"><canvas id="costChart"></canvas></div>
+  <div class="bg-white rounded shadow p-4"><canvas id="statusChart"></canvas></div>
+</div>
+<script>
+const payload = {{ chart_payload|safe }};
+new Chart(document.getElementById('costChart'), {type:'bar',data:{labels:payload.cost_labels,datasets:[{label:'Kosten/Monat',data:payload.cost_values,backgroundColor:'#2563eb'}]}});
+new Chart(document.getElementById('statusChart'), {type:'doughnut',data:{labels:payload.status_labels,datasets:[{data:payload.status_values,backgroundColor:['#2563eb','#059669','#dc2626','#d97706','#7c3aed','#0ea5e9']}]}});
+</script>
+{% endblock %}
