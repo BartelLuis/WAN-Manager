@@ -1,0 +1,17 @@
+{% extends "core/base.html" %}
+{% block title %}Kalender{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Operativer Kalender</h1>
+<div class="bg-white rounded shadow overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-50"><tr><th class="p-2 text-left">Datum</th><th class="p-2 text-left">Typ</th><th class="p-2 text-left">Titel</th></tr></thead>
+  <tbody>
+  {% for e in events %}
+    <tr class="border-t"><td class="p-2">{{ e.datum }}</td><td class="p-2">{{ e.typ }}</td><td class="p-2"><a class="text-blue-700" href="{{ e.link }}">{{ e.titel }}</a></td></tr>
+  {% empty %}
+    <tr><td class="p-3" colspan="3">Keine Events.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

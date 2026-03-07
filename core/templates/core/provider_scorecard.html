@@ -1,0 +1,27 @@
+{% extends "core/base.html" %}
+{% block title %}Provider Scorecard{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Provider Scorecard</h1>
+<div class="grid md:grid-cols-3 gap-4">
+  <div class="md:col-span-2 bg-white rounded shadow overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50"><tr><th class="p-2 text-left">Provider</th><th class="p-2">Ø Score</th><th class="p-2">Bewertungen</th></tr></thead>
+      <tbody>
+        {% for row in providers %}
+          <tr class="border-t"><td class="p-2">{{ row.provider.name }}</td><td class="p-2 text-center">{{ row.avg_score }}</td><td class="p-2 text-center">{{ row.bewertung_count }}</td></tr>
+        {% empty %}
+          <tr><td class="p-3" colspan="3">Keine Daten.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bg-white rounded shadow p-4">
+    <h2 class="font-semibold mb-2">Neue Bewertung</h2>
+    {% if can_rate %}
+      <form method="post">{% csrf_token %}{{ form.as_p }}<button class="px-3 py-2 rounded bg-brand text-white" type="submit">Speichern</button></form>
+    {% else %}
+      <p class="text-sm text-gray-600">Keine Berechtigung.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

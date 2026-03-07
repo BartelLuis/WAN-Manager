@@ -9,6 +9,7 @@ from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 
 class Verwaltung(models.Model):
@@ -518,6 +519,52 @@ class DokumentAnhang(models.Model):
         return self.bezeichnung
 
 
+class DokumentMappe(models.Model):
+    STATUS_ENTWURF = "entwurf"
+    STATUS_FREIGEGEBEN = "freigegeben"
+    STATUS_ARCHIVIERT = "archiviert"
+    STATUS_CHOICES = [
+        (STATUS_ENTWURF, "Entwurf"),
+        (STATUS_FREIGEGEBEN, "Freigegeben"),
+        (STATUS_ARCHIVIERT, "Archiviert"),
+    ]
+
+    titel = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ENTWURF)
+    bemerkung = models.TextField(blank=True, null=True)
+    erstellt_am = models.DateTimeField(auto_now_add=True)
+    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="dokument_mappen")
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    class Meta:
+        ordering = ["-erstellt_am", "-id"]
+
+    def __str__(self):
+        return self.titel
+
+
+class DokumentVersion(models.Model):
+    mappe = models.ForeignKey(DokumentMappe, on_delete=models.CASCADE, related_name="versionen")
+    version = models.PositiveIntegerField()
+    datei = models.FileField(upload_to="dokument_versionen/%Y/%m/")
+    changelog = models.TextField(blank=True, null=True)
+    freigegeben = models.BooleanField(default=False)
+    hochgeladen_am = models.DateTimeField(auto_now_add=True)
+    hochgeladen_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="dokument_versionen")
+
+    class Meta:
+        ordering = ["-version", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["mappe", "version"], name="uniq_dokument_version_per_mappe"),
+        ]
+
+    def __str__(self):
+        return f"{self.mappe.titel} v{self.version}"
+
+
 class ObjektNotiz(models.Model):
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
@@ -546,6 +593,137 @@ class UserNotification(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.titel}"
+
+
+class LeitungsStoerung(models.Model):
+    STATUS_OFFEN = "offen"
+    STATUS_IN_BEARBEITUNG = "in_bearbeitung"
+    STATUS_BEHOBEN = "behoben"
+    STATUS_CHOICES = [
+        (STATUS_OFFEN, "Offen"),
+        (STATUS_IN_BEARBEITUNG, "In Bearbeitung"),
+        (STATUS_BEHOBEN, "Behoben"),
+    ]
+
+    IMPACT_NIEDRIG = "niedrig"
+    IMPACT_MITTEL = "mittel"
+    IMPACT_HOCH = "hoch"
+    IMPACT_KRITISCH = "kritisch"
+    IMPACT_CHOICES = [
+        (IMPACT_NIEDRIG, "Niedrig"),
+        (IMPACT_MITTEL, "Mittel"),
+        (IMPACT_HOCH, "Hoch"),
+        (IMPACT_KRITISCH, "Kritisch"),
+    ]
+
+    wanleitung = models.ForeignKey(WanLeitung, on_delete=models.CASCADE, related_name="stoerungen")
+    provider = models.ForeignKey(Provider, on_delete=models.SET_NULL, blank=True, null=True, related_name="stoerungen")
+    titel = models.CharField(max_length=255)
+    beschreibung = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_OFFEN)
+    impact = models.CharField(max_length=20, choices=IMPACT_CHOICES, default=IMPACT_MITTEL)
+    ticket_nummer = models.CharField(max_length=100, blank=True, null=True)
+    geoeffnet_am = models.DateTimeField(default=timezone.now)
+    erwartet_behebung_bis = models.DateTimeField(blank=True, null=True)
+    behoben_am = models.DateTimeField(blank=True, null=True)
+    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="stoerungen_erstellt")
+
+    class Meta:
+        ordering = ["status", "-geoeffnet_am", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(behoben_am__isnull=True) | Q(geoeffnet_am__isnull=True) | Q(behoben_am__gte=models.F("geoeffnet_am")),
+                name="stoerung_behoben_after_opened",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.wanleitung} - {self.titel}"
+
+    @property
+    def ist_sla_verletzt(self):
+        if not self.erwartet_behebung_bis:
+            return False
+        if self.status == self.STATUS_BEHOBEN:
+            return bool(self.behoben_am and self.behoben_am > self.erwartet_behebung_bis)
+        return timezone.now() > self.erwartet_behebung_bis
+
+
+class ProviderBewertung(models.Model):
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="bewertungen")
+    beauftragung = models.ForeignKey(WanBeauftragung, on_delete=models.SET_NULL, blank=True, null=True, related_name="provider_bewertungen")
+    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="provider_bewertungen")
+    erstellt_am = models.DateTimeField(auto_now_add=True)
+
+    preis_score = models.PositiveSmallIntegerField(default=5)
+    umsetzung_score = models.PositiveSmallIntegerField(default=5)
+    sla_score = models.PositiveSmallIntegerField(default=5)
+    support_score = models.PositiveSmallIntegerField(default=5)
+    qualitaet_score = models.PositiveSmallIntegerField(default=5)
+    gesamt_score = models.DecimalField(max_digits=4, decimal_places=2, default=0)
+    kommentar = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-erstellt_am", "-id"]
+
+    def __str__(self):
+        return f"{self.provider} ({self.gesamt_score})"
+
+    def clean(self):
+        errors = {}
+        for field in ["preis_score", "umsetzung_score", "sla_score", "support_score", "qualitaet_score"]:
+            value = getattr(self, field)
+            if value < 1 or value > 10:
+                errors[field] = "Wert muss zwischen 1 und 10 liegen."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        total = (
+            float(self.preis_score) * 0.30
+            + float(self.umsetzung_score) * 0.20
+            + float(self.sla_score) * 0.25
+            + float(self.support_score) * 0.15
+            + float(self.qualitaet_score) * 0.10
+        )
+        self.gesamt_score = round(total, 2)
+        super().save(*args, **kwargs)
+
+
+class ObjektBerechtigung(models.Model):
+    ACTION_VIEW = "view"
+    ACTION_EDIT = "edit"
+    ACTION_APPROVE = "approve"
+    ACTION_EXPORT = "export"
+    ACTION_DOCS = "docs"
+    ACTION_CHOICES = [
+        (ACTION_VIEW, "Anzeigen"),
+        (ACTION_EDIT, "Bearbeiten"),
+        (ACTION_APPROVE, "Genehmigen"),
+        (ACTION_EXPORT, "Exportieren"),
+        (ACTION_DOCS, "Dokumente verwalten"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="objekt_berechtigungen")
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    erlaubt = models.BooleanField(default=True)
+    erstellt_am = models.DateTimeField(auto_now_add=True)
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    class Meta:
+        ordering = ["user__username", "action", "content_type_id", "object_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "action", "content_type", "object_id"],
+                name="uniq_objekt_berechtigung_per_action",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} {self.action} {self.content_type}#{self.object_id}"
 
 
 class SavedFilter(models.Model):
@@ -704,7 +882,12 @@ AUDITED_MODELS = (
     Tarif,
     Erinnerung,
     DokumentAnhang,
+    DokumentMappe,
+    DokumentVersion,
     ObjektNotiz,
+    LeitungsStoerung,
+    ProviderBewertung,
+    ObjektBerechtigung,
     SavedFilter,
 )
 
@@ -832,5 +1015,22 @@ def _notify_on_beauftragung(sender, instance, created, **kwargs):
             titel=title,
             nachricht=f"Status: {instance.get_status_display()}",
             link=f"/beauftragungen/{instance.pk}/",
+        )
+
+
+@receiver(post_save, sender=LeitungsStoerung)
+def _notify_on_stoerung(sender, instance, created, **kwargs):
+    if created:
+        title = f"Neue Störung: {instance.titel}"
+    else:
+        title = f"Störung aktualisiert: {instance.titel}"
+
+    link = f"/stoerungen/{instance.pk}/"
+    for user in _users_for_ops_notifications():
+        UserNotification.objects.create(
+            user=user,
+            titel=title,
+            nachricht=f"Leitung: {instance.wanleitung}",
+            link=link,
         )
 

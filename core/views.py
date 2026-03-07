@@ -1,6 +1,7 @@
 from decimal import Decimal
 import csv
 import io
+import json
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -46,6 +47,11 @@ from .models import (
     SavedFilter,
     UserProfile,
     GlobalSettings,
+    LeitungsStoerung,
+    ProviderBewertung,
+    DokumentMappe,
+    DokumentVersion,
+    ObjektBerechtigung,
 )
 from .forms import (
     StandortForm,
@@ -59,6 +65,10 @@ from .forms import (
     TarifForm,
     CsvImportForm,
     SavedFilterForm,
+    LeitungsStoerungForm,
+    ProviderBewertungForm,
+    DokumentMappeForm,
+    DokumentVersionForm,
 )
 
 # --- WAN Config (MBits pro Arbeitsplatz, Down + Up) ---
@@ -102,6 +112,62 @@ def can_approve_beauftragung(user) -> bool:
         is_super_or_net_admin(user)
         or user_in_group(user, "GENEHMIGER")
     )
+
+
+def _resolve_verwaltung_id_for_object(obj):
+    if hasattr(obj, "verwaltung_id") and obj.verwaltung_id:
+        return obj.verwaltung_id
+    standort = getattr(obj, "standort", None)
+    if standort and getattr(standort, "verwaltung_id", None):
+        return standort.verwaltung_id
+    wanleitung = getattr(obj, "wanleitung", None)
+    if wanleitung and getattr(wanleitung, "standort_id", None):
+        return getattr(wanleitung.standort, "verwaltung_id", None)
+    beauftragung = getattr(obj, "beauftragung", None)
+    if beauftragung and getattr(beauftragung, "standort_id", None):
+        return getattr(beauftragung.standort, "verwaltung_id", None)
+    mappe_obj = getattr(obj, "content_object", None)
+    if mappe_obj:
+        return _resolve_verwaltung_id_for_object(mappe_obj)
+    return None
+
+
+def has_action_permission(user, action: str, obj=None) -> bool:
+    if not user.is_authenticated:
+        return False
+    if is_super_or_net_admin(user):
+        return True
+
+    if obj is not None:
+        ct = ContentType.objects.get_for_model(obj.__class__)
+        rule = (
+            ObjektBerechtigung.objects.filter(
+                user=user,
+                action=action,
+                content_type=ct,
+                object_id=obj.pk,
+            )
+            .order_by("-id")
+            .first()
+        )
+        if rule is not None:
+            return rule.erlaubt
+
+    if action == ObjektBerechtigung.ACTION_EXPORT:
+        return user_in_group(user, "EINKAEUFER") or user_in_group(user, "EINKAUFER")
+
+    if user_in_group(user, "IT-BEAUFTRAGTER"):
+        if obj is None:
+            return action in {ObjektBerechtigung.ACTION_VIEW, ObjektBerechtigung.ACTION_DOCS}
+        own_verwaltung_id = getattr(getattr(user, "profile", None), "verwaltung_id", None)
+        obj_verwaltung_id = _resolve_verwaltung_id_for_object(obj)
+        if own_verwaltung_id and obj_verwaltung_id and own_verwaltung_id == obj_verwaltung_id:
+            return action in {
+                ObjektBerechtigung.ACTION_VIEW,
+                ObjektBerechtigung.ACTION_EDIT,
+                ObjektBerechtigung.ACTION_DOCS,
+            }
+    return False
 
 
 def unread_notifications_count(user) -> int:
@@ -1047,6 +1113,8 @@ def beauftragung_provider_anfrage_sent(request, beauftragung_pk, provider_pk):
 @user_passes_test(can_approve_beauftragung)
 def beauftragung_approve(request, pk):
     beauftragung = get_object_or_404(WanBeauftragung, pk=pk)
+    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_APPROVE, beauftragung):
+        return render(request, "core/forbidden.html", status=403)
 
     if request.method != "POST":
         return redirect("core:beauftragung_detail", pk=pk)
@@ -1150,6 +1218,271 @@ def apply_filter(request, pk):
 
 
 @login_required
+def stoerung_list(request):
+    qs = LeitungsStoerung.objects.select_related(
+        "wanleitung",
+        "wanleitung__standort",
+        "wanleitung__standort__verwaltung",
+        "provider",
+    )
+    user = request.user
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+        qs = qs.filter(wanleitung__standort__verwaltung_id=user.profile.verwaltung_id)
+
+    status = request.GET.get("status")
+    if status in dict(LeitungsStoerung.STATUS_CHOICES):
+        qs = qs.filter(status=status)
+
+    return render(
+        request,
+        "core/stoerung_list.html",
+        {
+            "stoerungen": qs.order_by("status", "-geoeffnet_am"),
+            "status": status or "",
+            "status_choices": LeitungsStoerung.STATUS_CHOICES,
+            "can_create_stoerung": can_manage_beauftragung(user),
+        },
+    )
+
+
+@login_required
+@user_passes_test(can_manage_beauftragung)
+def stoerung_create(request):
+    if request.method == "POST":
+        form = LeitungsStoerungForm(request.POST)
+        if form.is_valid():
+            stoerung = form.save(commit=False)
+            if not has_action_permission(request.user, ObjektBerechtigung.ACTION_EDIT, stoerung.wanleitung):
+                return render(request, "core/forbidden.html", status=403)
+            stoerung.erstellt_von = request.user
+            if not stoerung.provider_id and stoerung.wanleitung.provider_ref_id:
+                stoerung.provider_id = stoerung.wanleitung.provider_ref_id
+            stoerung.save()
+            return redirect("core:stoerung_detail", pk=stoerung.pk)
+    else:
+        form = LeitungsStoerungForm()
+
+    return render(request, "core/stoerung_form.html", {"form": form})
+
+
+@login_required
+def stoerung_detail(request, pk):
+    stoerung = get_object_or_404(
+        LeitungsStoerung.objects.select_related(
+            "wanleitung",
+            "wanleitung__standort",
+            "wanleitung__standort__verwaltung",
+            "provider",
+        ),
+        pk=pk,
+    )
+    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_VIEW, stoerung):
+        return render(request, "core/forbidden.html", status=403)
+    return render(
+        request,
+        "core/stoerung_detail.html",
+        {"stoerung": stoerung, "can_edit": can_manage_beauftragung(request.user)},
+    )
+
+
+@login_required
+@user_passes_test(can_manage_beauftragung)
+def stoerung_update(request, pk):
+    stoerung = get_object_or_404(LeitungsStoerung, pk=pk)
+    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_EDIT, stoerung):
+        return render(request, "core/forbidden.html", status=403)
+
+    if request.method == "POST":
+        form = LeitungsStoerungForm(request.POST, instance=stoerung)
+        if form.is_valid():
+            form.save()
+            return redirect("core:stoerung_detail", pk=stoerung.pk)
+    else:
+        form = LeitungsStoerungForm(instance=stoerung)
+
+    return render(request, "core/stoerung_form.html", {"form": form, "is_edit": True, "stoerung": stoerung})
+
+
+@login_required
+def provider_scorecard(request):
+    user = request.user
+    if request.method == "POST" and can_manage_beauftragung(user):
+        form = ProviderBewertungForm(request.POST)
+        if form.is_valid():
+            bewertung = form.save(commit=False)
+            bewertung.erstellt_von = user
+            bewertung.save()
+            messages.success(request, "Provider-Bewertung gespeichert.")
+            return redirect("core:provider_scorecard")
+    else:
+        form = ProviderBewertungForm()
+
+    providers_qs = Provider.objects.annotate(
+        total_score=Coalesce(Sum("bewertungen__gesamt_score"), Value(Decimal("0.00"))),
+        bewertung_count=Count("bewertungen"),
+    ).order_by("name")
+    providers = []
+    for p in providers_qs:
+        count = int(p.bewertung_count or 0)
+        avg = float(p.total_score or 0) / count if count else 0.0
+        providers.append({"provider": p, "avg_score": round(avg, 2), "bewertung_count": count})
+    providers.sort(key=lambda x: x["avg_score"], reverse=True)
+
+    return render(
+        request,
+        "core/provider_scorecard.html",
+        {
+            "providers": providers,
+            "form": form,
+            "bewertungen": ProviderBewertung.objects.select_related("provider", "beauftragung", "erstellt_von")[:100],
+            "can_rate": can_manage_beauftragung(user),
+        },
+    )
+
+
+@login_required
+def ops_calendar(request):
+    user = request.user
+    today = timezone.localdate()
+
+    erinnerungen = Erinnerung.objects.exclude(status=Erinnerung.STATUS_ERLEDIGT).select_related("vertrag", "beauftragung")
+    vertraege = Vertrag.objects.filter(laufzeit_bis__isnull=False)
+    beauftragungen = WanBeauftragung.objects.exclude(status__in=[WanBeauftragung.STATUS_UMGESETZT, WanBeauftragung.STATUS_ABGELEHNT, WanBeauftragung.STATUS_STORNIERT])
+    stoerungen = LeitungsStoerung.objects.exclude(status=LeitungsStoerung.STATUS_BEHOBEN).select_related("wanleitung", "wanleitung__standort")
+
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+        verw_id = user.profile.verwaltung_id
+        erinnerungen = erinnerungen.filter(Q(vertrag__verwaltung_id=verw_id) | Q(beauftragung__standort__verwaltung_id=verw_id))
+        vertraege = vertraege.filter(verwaltung_id=verw_id)
+        beauftragungen = beauftragungen.filter(standort__verwaltung_id=verw_id)
+        stoerungen = stoerungen.filter(wanleitung__standort__verwaltung_id=verw_id)
+
+    events = []
+    for e in erinnerungen[:200]:
+        events.append({"datum": e.faellig_am, "typ": "Erinnerung", "titel": e.titel, "link": "/erinnerungen/"})
+    for v in vertraege.filter(laufzeit_bis__lte=today + timedelta(days=180))[:200]:
+        events.append({"datum": v.laufzeit_bis, "typ": "Vertrag", "titel": f"Vertrag endet: {v.vertragsnummer}", "link": f"/vertraege/{v.pk}/"})
+    for b in beauftragungen.filter(umsetzung_bis__isnull=False)[:200]:
+        events.append({"datum": b.umsetzung_bis, "typ": "Beauftragung", "titel": b.titel, "link": f"/beauftragungen/{b.pk}/"})
+    for s in stoerungen[:200]:
+        events.append({"datum": timezone.localtime(s.erwartet_behebung_bis).date() if s.erwartet_behebung_bis else today, "typ": "Störung", "titel": s.titel, "link": f"/stoerungen/{s.pk}/"})
+
+    events.sort(key=lambda x: x["datum"])
+    return render(request, "core/ops_calendar.html", {"events": events[:400], "today": today})
+
+
+@login_required
+def reports_interactive(request):
+    user = request.user
+    if not has_action_permission(user, ObjektBerechtigung.ACTION_EXPORT):
+        return render(request, "core/forbidden.html", status=403)
+
+    vertraege = Vertrag.objects.all()
+    beauftragungen = WanBeauftragung.objects.all()
+    stoerungen = LeitungsStoerung.objects.all()
+    standorte = Standort.objects.prefetch_related("leitungen")
+
+    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+        verw_id = user.profile.verwaltung_id
+        vertraege = vertraege.filter(verwaltung_id=verw_id)
+        beauftragungen = beauftragungen.filter(standort__verwaltung_id=verw_id)
+        stoerungen = stoerungen.filter(wanleitung__standort__verwaltung_id=verw_id)
+        standorte = standorte.filter(verwaltung_id=verw_id)
+
+    costs_by_provider = (
+        vertraege.values("provider")
+        .annotate(total=Coalesce(Sum("kosten_monat_netto"), Value(Decimal("0.00"))))
+        .order_by("-total")[:10]
+    )
+    status_data = beauftragungen.values("status").annotate(total=Count("id")).order_by("status")
+
+    sla_broken = sum(1 for s in stoerungen if s.ist_sla_verletzt)
+    under_supplied = 0
+    for standort in standorte:
+        required = int((standort.arbeitsplaetze or 0) * WAN_MBIT_PER_AP_DOWN)
+        if required <= 0:
+            continue
+        best = max([l.bandbreite_down_mbit or 0 for l in standort.leitungen.all()] + [0])
+        if best < required:
+            under_supplied += 1
+
+    chart_payload = {
+        "cost_labels": [row["provider"] or "Unbekannt" for row in costs_by_provider],
+        "cost_values": [float(row["total"] or 0) for row in costs_by_provider],
+        "status_labels": [row["status"] for row in status_data],
+        "status_values": [row["total"] for row in status_data],
+    }
+
+    return render(
+        request,
+        "core/reports_interactive.html",
+        {
+            "chart_payload": json.dumps(chart_payload),
+            "kpi_sla_broken": sla_broken,
+            "kpi_under_supplied": under_supplied,
+            "kpi_open_stoerungen": stoerungen.exclude(status=LeitungsStoerung.STATUS_BEHOBEN).count(),
+        },
+    )
+
+
+@login_required
+def dokument_mappe_create(request, model_name, object_id):
+    model_map = {
+        "beauftragung": WanBeauftragung,
+        "vertrag": Vertrag,
+        "leitung": WanLeitung,
+        "standort": Standort,
+    }
+    model = model_map.get(model_name)
+    if not model:
+        return redirect("core:dashboard")
+    obj = get_object_or_404(model, pk=object_id)
+    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_DOCS, obj):
+        return render(request, "core/forbidden.html", status=403)
+
+    if request.method == "POST":
+        form = DokumentMappeForm(request.POST)
+        if form.is_valid():
+            mappe = form.save(commit=False)
+            mappe.content_type = ContentType.objects.get_for_model(model)
+            mappe.object_id = obj.pk
+            mappe.erstellt_von = request.user
+            mappe.save()
+            messages.success(request, "Dokumentenmappe erstellt.")
+            return redirect("core:dokument_mappe_detail", pk=mappe.pk)
+    else:
+        form = DokumentMappeForm()
+
+    return render(request, "core/dokument_mappe_form.html", {"form": form, "obj": obj})
+
+
+@login_required
+def dokument_mappe_detail(request, pk):
+    mappe = get_object_or_404(DokumentMappe.objects.prefetch_related("versionen"), pk=pk)
+    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_DOCS, mappe):
+        return render(request, "core/forbidden.html", status=403)
+
+    if request.method == "POST":
+        form = DokumentVersionForm(request.POST, request.FILES)
+        if form.is_valid():
+            version = form.save(commit=False)
+            version.mappe = mappe
+            version.hochgeladen_von = request.user
+            version.save()
+            messages.success(request, "Dokumentversion gespeichert.")
+            return redirect("core:dokument_mappe_detail", pk=pk)
+    else:
+        next_version = (mappe.versionen.first().version + 1) if mappe.versionen.exists() else 1
+        form = DokumentVersionForm(initial={"version": next_version})
+
+    return render(
+        request,
+        "core/dokument_mappe_detail.html",
+        {"mappe": mappe, "form": form, "versionen": mappe.versionen.all()},
+    )
+
+
+@login_required
 def add_object_note(request, model_name, object_id):
     model_map = {
         "beauftragung": WanBeauftragung,
@@ -1231,6 +1564,8 @@ def erinnerung_list(request):
 @login_required
 def report_vertraege_csv(request):
     user = request.user
+    if not has_action_permission(user, ObjektBerechtigung.ACTION_EXPORT):
+        return render(request, "core/forbidden.html", status=403)
     vertraege = Vertrag.objects.select_related("verwaltung", "provider_ref").order_by("verwaltung__kuerzel", "provider", "vertragsnummer")
     if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
         vertraege = vertraege.filter(verwaltung_id=user.profile.verwaltung_id)
@@ -1269,6 +1604,8 @@ def report_vertraege_csv(request):
 @login_required
 def report_beauftragungen_csv(request):
     user = request.user
+    if not has_action_permission(user, ObjektBerechtigung.ACTION_EXPORT):
+        return render(request, "core/forbidden.html", status=403)
     beauftragungen = WanBeauftragung.objects.select_related("standort", "standort__verwaltung", "erstellt_von").prefetch_related("angefragte_provider")
     if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
         beauftragungen = beauftragungen.filter(standort__verwaltung_id=user.profile.verwaltung_id)
@@ -1357,6 +1694,8 @@ def erinnerung_quick_done(request, pk):
 @user_passes_test(can_manage_beauftragung)
 def beauftragung_set_status(request, pk, status):
     beauftragung = get_object_or_404(WanBeauftragung, pk=pk)
+    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_EDIT, beauftragung):
+        return render(request, "core/forbidden.html", status=403)
     valid = {value for value, _label in WanBeauftragung.STATUS_CHOICES}
     if status in valid:
         beauftragung.status = status

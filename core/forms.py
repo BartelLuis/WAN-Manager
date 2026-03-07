@@ -11,6 +11,10 @@ from .models import (
     ProviderZusatzoption,
     Tarif,
     SavedFilter,
+    LeitungsStoerung,
+    ProviderBewertung,
+    DokumentMappe,
+    DokumentVersion,
 )
 
 
@@ -377,3 +381,47 @@ class SavedFilterForm(forms.ModelForm):
 
 class CsvImportForm(forms.Form):
     csv_file = forms.FileField(label="CSV-Datei")
+
+
+class LeitungsStoerungForm(forms.ModelForm):
+    class Meta:
+        model = LeitungsStoerung
+        fields = [
+            "wanleitung",
+            "provider",
+            "titel",
+            "beschreibung",
+            "status",
+            "impact",
+            "ticket_nummer",
+            "geoeffnet_am",
+            "erwartet_behebung_bis",
+            "behoben_am",
+        ]
+
+
+class ProviderBewertungForm(forms.ModelForm):
+    class Meta:
+        model = ProviderBewertung
+        fields = [
+            "provider",
+            "beauftragung",
+            "preis_score",
+            "umsetzung_score",
+            "sla_score",
+            "support_score",
+            "qualitaet_score",
+            "kommentar",
+        ]
+
+
+class DokumentMappeForm(forms.ModelForm):
+    class Meta:
+        model = DokumentMappe
+        fields = ["titel", "status", "bemerkung"]
+
+
+class DokumentVersionForm(forms.ModelForm):
+    class Meta:
+        model = DokumentVersion
+        fields = ["version", "datei", "changelog", "freigegeben"]

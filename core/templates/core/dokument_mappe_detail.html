@@ -1,0 +1,23 @@
+{% extends "core/base.html" %}
+{% block title %}Dokumentenmappe{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">{{ mappe.titel }}</h1>
+<div class="grid md:grid-cols-3 gap-4">
+  <div class="md:col-span-2 bg-white rounded shadow overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50"><tr><th class="p-2">Version</th><th class="p-2 text-left">Datei</th><th class="p-2">Freigegeben</th><th class="p-2">Zeit</th></tr></thead>
+      <tbody>
+      {% for v in versionen %}
+        <tr class="border-t"><td class="p-2 text-center">{{ v.version }}</td><td class="p-2"><a class="text-blue-700" href="{{ v.datei.url }}">Download</a></td><td class="p-2 text-center">{% if v.freigegeben %}Ja{% else %}Nein{% endif %}</td><td class="p-2 text-center">{{ v.hochgeladen_am|date:'d.m.Y H:i' }}</td></tr>
+      {% empty %}
+        <tr><td class="p-3" colspan="4">Noch keine Versionen.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bg-white rounded shadow p-4">
+    <h2 class="font-semibold mb-2">Neue Version</h2>
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="px-3 py-2 rounded bg-brand text-white" type="submit">Hochladen</button></form>
+  </div>
+</div>
+{% endblock %}
