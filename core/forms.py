@@ -15,6 +15,7 @@ from .models import (
     ProviderBewertung,
     DokumentMappe,
     DokumentVersion,
+    BeauftragungApprovalStep,
 )
 
 
@@ -78,7 +79,15 @@ class ProviderZusatzoptionForm(forms.ModelForm):
 class TarifForm(forms.ModelForm):
     class Meta:
         model = Tarif
-        fields = ["provider", "name", "beschreibung", "bandbreite_down_mbit", "bandbreite_up_mbit", "medium", "bemerkung"]
+        fields = [
+            "provider",
+            "name",
+            "beschreibung",
+            "bandbreite_down_mbit",
+            "bandbreite_up_mbit",
+            "medium",
+            "bemerkung",
+        ]
 
 
 class VertragForm(forms.ModelForm):
@@ -119,8 +128,14 @@ class VertragForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         # --- Verwaltung einschränken für IT-Beauftragte (wenn Profile gesetzt) ---
-        if user and hasattr(user, "profile") and getattr(user.profile, "verwaltung_id", None):
-            self.fields["verwaltung"].queryset = Verwaltung.objects.filter(id=user.profile.verwaltung_id)
+        if (
+            user
+            and hasattr(user, "profile")
+            and getattr(user.profile, "verwaltung_id", None)
+        ):
+            self.fields["verwaltung"].queryset = Verwaltung.objects.filter(
+                id=user.profile.verwaltung_id
+            )
             self.fields["verwaltung"].initial = user.profile.verwaltung_id
 
             # extrem wichtig: instance direkt setzen, damit niemand irgendwo vertrag.verwaltung liest und es knallt
@@ -138,10 +153,16 @@ class VertragForm(forms.ModelForm):
 
         # --- Provider queryset sortiert ---
         if "provider_ref" in self.fields:
-            self.fields["provider_ref"].queryset = Provider.objects.all().order_by("name")
+            self.fields["provider_ref"].queryset = Provider.objects.all().order_by(
+                "name"
+            )
 
         # --- Wenn bestehender Vertrag: Kostenstelle initial aus Verwaltungskürzel setzen ---
-        if self.instance and self.instance.pk and getattr(self.instance, "verwaltung_id", None):
+        if (
+            self.instance
+            and self.instance.pk
+            and getattr(self.instance, "verwaltung_id", None)
+        ):
             verwaltung = self.instance.verwaltung
             if getattr(verwaltung, "kuerzel", None):
                 self.initial.setdefault("kostenstelle", verwaltung.kuerzel)
@@ -182,11 +203,13 @@ class WanLeitungForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         if "provider_ref" in self.fields:
-            self.fields["provider_ref"].queryset = Provider.objects.all().order_by("name")
-        if "tarif_ref" in self.fields:
-            self.fields["tarif_ref"].queryset = Tarif.objects.select_related("provider").order_by(
-                "provider__name", "name"
+            self.fields["provider_ref"].queryset = Provider.objects.all().order_by(
+                "name"
             )
+        if "tarif_ref" in self.fields:
+            self.fields["tarif_ref"].queryset = Tarif.objects.select_related(
+                "provider"
+            ).order_by("provider__name", "name")
 
     def clean(self):
         cleaned = super().clean()
@@ -206,7 +229,9 @@ class WanLeitungForm(forms.ModelForm):
                 provider_ref = tarif_ref.provider
 
             if not provider_text:
-                cleaned["provider"] = tarif_ref.provider.kuerzel or tarif_ref.provider.name
+                cleaned["provider"] = (
+                    tarif_ref.provider.kuerzel or tarif_ref.provider.name
+                )
 
             if not bezeichnung:
                 cleaned["bezeichnung"] = tarif_ref.name
@@ -237,15 +262,23 @@ class WanLeitungForm(forms.ModelForm):
                 instance.provider_ref = provider_ref
 
             if not instance.provider:
-                instance.provider = tarif_ref.provider.kuerzel or tarif_ref.provider.name
+                instance.provider = (
+                    tarif_ref.provider.kuerzel or tarif_ref.provider.name
+                )
 
             if not instance.bezeichnung:
                 instance.bezeichnung = tarif_ref.name
 
-            if instance.bandbreite_down_mbit is None and tarif_ref.bandbreite_down_mbit is not None:
+            if (
+                instance.bandbreite_down_mbit is None
+                and tarif_ref.bandbreite_down_mbit is not None
+            ):
                 instance.bandbreite_down_mbit = tarif_ref.bandbreite_down_mbit
 
-            if instance.bandbreite_up_mbit is None and tarif_ref.bandbreite_up_mbit is not None:
+            if (
+                instance.bandbreite_up_mbit is None
+                and tarif_ref.bandbreite_up_mbit is not None
+            ):
                 instance.bandbreite_up_mbit = tarif_ref.bandbreite_up_mbit
 
             if not instance.medium and tarif_ref.medium:
@@ -285,14 +318,22 @@ class WanBeauftragungForm(forms.ModelForm):
         user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
-        standorte = Standort.objects.select_related("verwaltung").order_by("standort_code")
-        leitungen = WanLeitung.objects.select_related("standort", "standort__verwaltung").order_by(
-            "standort__standort_code", "bezeichnung", "provider"
+        standorte = Standort.objects.select_related("verwaltung").order_by(
+            "standort_code"
         )
+        leitungen = WanLeitung.objects.select_related(
+            "standort", "standort__verwaltung"
+        ).order_by("standort__standort_code", "bezeichnung", "provider")
 
-        if user and hasattr(user, "profile") and getattr(user.profile, "verwaltung_id", None):
+        if (
+            user
+            and hasattr(user, "profile")
+            and getattr(user.profile, "verwaltung_id", None)
+        ):
             standorte = standorte.filter(verwaltung_id=user.profile.verwaltung_id)
-            leitungen = leitungen.filter(standort__verwaltung_id=user.profile.verwaltung_id)
+            leitungen = leitungen.filter(
+                standort__verwaltung_id=user.profile.verwaltung_id
+            )
 
             if not getattr(self.instance, "standort_id", None):
                 first_standort = standorte.first()
@@ -313,17 +354,30 @@ class WanBeauftragungForm(forms.ModelForm):
         bedarf_down = cleaned.get("bedarf_down_mbit")
         bedarf_up = cleaned.get("bedarf_up_mbit")
 
-        if bestehende_leitung and standort and bestehende_leitung.standort_id != standort.id:
+        if (
+            bestehende_leitung
+            and standort
+            and bestehende_leitung.standort_id != standort.id
+        ):
             self.add_error(
                 "bestehende_leitung",
                 "Die bestehende Leitung muss zum ausgewaehlten Standort gehoeren.",
             )
 
-        if status in {WanBeauftragung.STATUS_BEAUFTRAGT, WanBeauftragung.STATUS_UMGESETZT}:
+        if status in {
+            WanBeauftragung.STATUS_BEAUFTRAGT,
+            WanBeauftragung.STATUS_UMGESETZT,
+        }:
             if not angefragte_provider:
-                self.add_error("angefragte_provider", "Bei Status 'Beauftragt/Umgesetzt' muss mindestens ein Provider gewaehlt sein.")
+                self.add_error(
+                    "angefragte_provider",
+                    "Bei Status 'Beauftragt/Umgesetzt' muss mindestens ein Provider gewaehlt sein.",
+                )
             if not bedarf_down and not bedarf_up:
-                self.add_error("bedarf_down_mbit", "Bei Status 'Beauftragt/Umgesetzt' muss ein Bandbreitenbedarf gepflegt sein.")
+                self.add_error(
+                    "bedarf_down_mbit",
+                    "Bei Status 'Beauftragt/Umgesetzt' muss ein Bandbreitenbedarf gepflegt sein.",
+                )
 
         return cleaned
 
@@ -347,10 +401,14 @@ class WanBeauftragungProviderKontextForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         provider = getattr(self.instance, "provider", None)
         if provider:
-            self.fields["tarif"].queryset = Tarif.objects.filter(provider=provider).order_by("name")
-            self.fields["zusatzoptionen"].queryset = ProviderZusatzoption.objects.filter(
-                provider=provider, aktiv=True
+            self.fields["tarif"].queryset = Tarif.objects.filter(
+                provider=provider
             ).order_by("name")
+            self.fields["zusatzoptionen"].queryset = (
+                ProviderZusatzoption.objects.filter(
+                    provider=provider, aktiv=True
+                ).order_by("name")
+            )
         else:
             self.fields["tarif"].queryset = Tarif.objects.none()
             self.fields["zusatzoptionen"].queryset = ProviderZusatzoption.objects.none()
@@ -368,7 +426,10 @@ class WanBeauftragungProviderKontextForm(forms.ModelForm):
         if provider and zusatzoptionen:
             wrong = [z.name for z in zusatzoptionen if z.provider_id != provider.id]
             if wrong:
-                self.add_error("zusatzoptionen", "Mindestens eine Zusatzoption gehoert nicht zum Provider.")
+                self.add_error(
+                    "zusatzoptionen",
+                    "Mindestens eine Zusatzoption gehoert nicht zum Provider.",
+                )
 
         return cleaned
 
@@ -425,3 +486,9 @@ class DokumentVersionForm(forms.ModelForm):
     class Meta:
         model = DokumentVersion
         fields = ["version", "datei", "changelog", "freigegeben"]
+
+
+class BeauftragungApprovalStepForm(forms.ModelForm):
+    class Meta:
+        model = BeauftragungApprovalStep
+        fields = ["reihenfolge", "rolle", "genehmiger", "status", "notiz"]

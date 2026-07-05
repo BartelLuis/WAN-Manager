@@ -51,6 +51,7 @@ from .models import (
     ProviderBewertung,
     DokumentMappe,
     DokumentVersion,
+    BeauftragungApprovalStep,
     ObjektBerechtigung,
 )
 from .forms import (
@@ -69,6 +70,7 @@ from .forms import (
     ProviderBewertungForm,
     DokumentMappeForm,
     DokumentVersionForm,
+    BeauftragungApprovalStepForm,
 )
 
 # --- WAN Config (MBits pro Arbeitsplatz, Down + Up) ---
@@ -108,10 +110,7 @@ def can_manage_beauftragung(user) -> bool:
 
 
 def can_approve_beauftragung(user) -> bool:
-    return (
-        is_super_or_net_admin(user)
-        or user_in_group(user, "GENEHMIGER")
-    )
+    return is_super_or_net_admin(user) or user_in_group(user, "GENEHMIGER")
 
 
 def _resolve_verwaltung_id_for_object(obj):
@@ -158,10 +157,19 @@ def has_action_permission(user, action: str, obj=None) -> bool:
 
     if user_in_group(user, "IT-BEAUFTRAGTER"):
         if obj is None:
-            return action in {ObjektBerechtigung.ACTION_VIEW, ObjektBerechtigung.ACTION_DOCS}
-        own_verwaltung_id = getattr(getattr(user, "profile", None), "verwaltung_id", None)
+            return action in {
+                ObjektBerechtigung.ACTION_VIEW,
+                ObjektBerechtigung.ACTION_DOCS,
+            }
+        own_verwaltung_id = getattr(
+            getattr(user, "profile", None), "verwaltung_id", None
+        )
         obj_verwaltung_id = _resolve_verwaltung_id_for_object(obj)
-        if own_verwaltung_id and obj_verwaltung_id and own_verwaltung_id == obj_verwaltung_id:
+        if (
+            own_verwaltung_id
+            and obj_verwaltung_id
+            and own_verwaltung_id == obj_verwaltung_id
+        ):
             return action in {
                 ObjektBerechtigung.ACTION_VIEW,
                 ObjektBerechtigung.ACTION_EDIT,
@@ -219,17 +227,13 @@ def _timeline_for_object(obj):
 def _send_ticket_email_for_beauftragung(beauftragung, approver):
     settings_obj = GlobalSettings.objects.filter(pk=1).first()
     recipient = (
-        (settings_obj.ticket_system_email or "").strip()
-        if settings_obj
-        else ""
+        (settings_obj.ticket_system_email or "").strip() if settings_obj else ""
     ) or (getattr(settings, "TICKET_SYSTEM_EMAIL", "") or "").strip()
     if not recipient:
         raise ValueError("Keine Ticketsystem-E-Mail konfiguriert.")
 
     header_name = (
-        (settings_obj.ticket_header_name or "").strip()
-        if settings_obj
-        else ""
+        (settings_obj.ticket_header_name or "").strip() if settings_obj else ""
     ) or "X-Ticket-Nummer"
     ticket_nummer = (beauftragung.ticket_nummer or f"WAN-{beauftragung.pk}").strip()
 
@@ -253,7 +257,11 @@ def _send_ticket_email_for_beauftragung(beauftragung, approver):
 
 
 def _verwaltungen_queryset_for_user(user):
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         return Verwaltung.objects.filter(id=user.profile.verwaltung.id)
     return Verwaltung.objects.all()
 
@@ -262,7 +270,9 @@ def _sync_provider_kontexte(beauftragung):
     provider_ids = set(beauftragung.angefragte_provider.values_list("id", flat=True))
     existing = {
         k.provider_id: k
-        for k in WanBeauftragungProviderKontext.objects.filter(beauftragung=beauftragung)
+        for k in WanBeauftragungProviderKontext.objects.filter(
+            beauftragung=beauftragung
+        )
     }
 
     for provider_id in provider_ids - set(existing.keys()):
@@ -271,9 +281,9 @@ def _sync_provider_kontexte(beauftragung):
             provider_id=provider_id,
         )
 
-    WanBeauftragungProviderKontext.objects.filter(
-        beauftragung=beauftragung
-    ).exclude(provider_id__in=provider_ids).delete()
+    WanBeauftragungProviderKontext.objects.filter(beauftragung=beauftragung).exclude(
+        provider_id__in=provider_ids
+    ).delete()
 
 
 def _annotate_verwaltung_counts_and_sums(qs):
@@ -289,8 +299,7 @@ def _annotate_verwaltung_counts_and_sums(qs):
 
     # Summe Arbeitsplätze pro Verwaltung (Integer)
     standort_sum_subq = (
-        Standort.objects
-        .filter(verwaltung=OuterRef("pk"))
+        Standort.objects.filter(verwaltung=OuterRef("pk"))
         .values("verwaltung")
         .annotate(s=Sum("arbeitsplaetze"))
         .values("s")[:1]
@@ -298,8 +307,7 @@ def _annotate_verwaltung_counts_and_sums(qs):
 
     # Summe Kosten pro Verwaltung (Decimal)
     kosten_sum_subq = (
-        Vertrag.objects
-        .filter(verwaltung=OuterRef("pk"))
+        Vertrag.objects.filter(verwaltung=OuterRef("pk"))
         .values("verwaltung")
         .annotate(s=Sum("kosten_monat_netto"))
         .values("s")[:1]
@@ -308,15 +316,16 @@ def _annotate_verwaltung_counts_and_sums(qs):
     return qs.annotate(
         standort_count=Count("standorte", distinct=True),
         leitung_count=Count("standorte__leitungen", distinct=True),
-
         arbeitsplaetze_sum=Coalesce(
             Subquery(standort_sum_subq, output_field=IntegerField()),
             Value(0),
             output_field=IntegerField(),
         ),
-
         kosten_monat=Coalesce(
-            Subquery(kosten_sum_subq, output_field=DecimalField(max_digits=10, decimal_places=2)),
+            Subquery(
+                kosten_sum_subq,
+                output_field=DecimalField(max_digits=10, decimal_places=2),
+            ),
             Value(Decimal("0.00")),
             output_field=DecimalField(max_digits=10, decimal_places=2),
         ),
@@ -325,11 +334,14 @@ def _annotate_verwaltung_counts_and_sums(qs):
 
 # ---------------------------- Dashboard ----------------------------
 
+
 @login_required
 def dashboard(request):
     user = request.user
     verwaltungen = _verwaltungen_queryset_for_user(user)
-    verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen).order_by("kuerzel")
+    verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen).order_by(
+        "kuerzel"
+    )
     today = timezone.localdate()
 
     vertrags_fristen = Vertrag.objects.filter(
@@ -345,9 +357,17 @@ def dashboard(request):
     )
     offene_erinnerungen = Erinnerung.objects.exclude(status=Erinnerung.STATUS_ERLEDIGT)
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
-        vertrags_fristen = vertrags_fristen.filter(verwaltung_id=user.profile.verwaltung_id)
-        offene_beauftragungen = offene_beauftragungen.filter(standort__verwaltung_id=user.profile.verwaltung_id)
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung_id
+    ):
+        vertrags_fristen = vertrags_fristen.filter(
+            verwaltung_id=user.profile.verwaltung_id
+        )
+        offene_beauftragungen = offene_beauftragungen.filter(
+            standort__verwaltung_id=user.profile.verwaltung_id
+        )
         offene_erinnerungen = offene_erinnerungen.filter(
             Q(vertrag__verwaltung_id=user.profile.verwaltung_id)
             | Q(beauftragung__standort__verwaltung_id=user.profile.verwaltung_id)
@@ -355,7 +375,11 @@ def dashboard(request):
 
     unterversorgt = 0
     standorte = Standort.objects.prefetch_related("leitungen")
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung_id
+    ):
         standorte = standorte.filter(verwaltung_id=user.profile.verwaltung_id)
     for s in standorte:
         required = int((s.arbeitsplaetze or 0) * WAN_MBIT_PER_AP_DOWN)
@@ -370,10 +394,26 @@ def dashboard(request):
         "role_label": _role_label(user),
         "unread_notifications": unread_notifications_count(user),
         "risk_cards": [
-            {"label": "Offene Erinnerungen", "value": offene_erinnerungen.count(), "link": "core:erinnerung_list"},
-            {"label": "Offene Beauftragungen", "value": offene_beauftragungen.count(), "link": "core:beauftragung_list"},
-            {"label": "Verträge <= 30 Tage", "value": vertrags_fristen.count(), "link": "core:vertrag_list"},
-            {"label": "Unterversorgte Standorte", "value": unterversorgt, "link": "core:standort_list"},
+            {
+                "label": "Offene Erinnerungen",
+                "value": offene_erinnerungen.count(),
+                "link": "core:erinnerung_list",
+            },
+            {
+                "label": "Offene Beauftragungen",
+                "value": offene_beauftragungen.count(),
+                "link": "core:beauftragung_list",
+            },
+            {
+                "label": "Verträge <= 30 Tage",
+                "value": vertrags_fristen.count(),
+                "link": "core:vertrag_list",
+            },
+            {
+                "label": "Unterversorgte Standorte",
+                "value": unterversorgt,
+                "link": "core:standort_list",
+            },
         ],
     }
     return render(request, "core/dashboard.html", context)
@@ -381,18 +421,23 @@ def dashboard(request):
 
 # ---------------------------- Verwaltungen ----------------------------
 
+
 @login_required
 def verwaltung_list(request):
     user = request.user
     verwaltungen = _verwaltungen_queryset_for_user(user)
-    verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen).order_by("kuerzel")
+    verwaltungen = _annotate_verwaltung_counts_and_sums(verwaltungen).order_by(
+        "kuerzel"
+    )
 
     return render(
         request,
         "core/verwaltung_list.html",
-        {"verwaltungen": verwaltungen, "can_create_verwaltung": is_super_or_net_admin(user)},
+        {
+            "verwaltungen": verwaltungen,
+            "can_create_verwaltung": is_super_or_net_admin(user),
+        },
     )
-
 
 
 @login_required
@@ -434,25 +479,25 @@ def verwaltung_detail(request, pk):
     user = request.user
     verwaltung = get_object_or_404(Verwaltung, pk=pk)
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         if verwaltung.id != user.profile.verwaltung_id:
             return render(request, "core/forbidden.html", status=403)
 
-    standorte = (
-        verwaltung.standorte
-        .select_related("verwaltung")
-        .annotate(leitung_count=Count("leitungen"))
+    standorte = verwaltung.standorte.select_related("verwaltung").annotate(
+        leitung_count=Count("leitungen")
     )
 
     arbeitsplaetze_sum = standorte.aggregate(s=Sum("arbeitsplaetze"))["s"] or 0
 
     vertraege = verwaltung.vertraege.all()
 
-    leitungen = (
-        WanLeitung.objects
-        .select_related("standort", "standort__verwaltung", "vertrag")
-        .filter(standort__verwaltung=verwaltung)
-    )
+    leitungen = WanLeitung.objects.select_related(
+        "standort", "standort__verwaltung", "vertrag"
+    ).filter(standort__verwaltung=verwaltung)
 
     context = {
         "verwaltung": verwaltung,
@@ -466,6 +511,7 @@ def verwaltung_detail(request, pk):
 
 
 # ---------------------------- Provider ----------------------------
+
 
 @login_required
 def provider_list(request):
@@ -524,7 +570,9 @@ def provider_detail(request, pk):
 
     tarife = provider.tarife.all().order_by("name")
     optionen = provider.zusatzoptionen.all().order_by("name")
-    leitungen = provider.leitungen.select_related("standort", "standort__verwaltung", "vertrag")
+    leitungen = provider.leitungen.select_related(
+        "standort", "standort__verwaltung", "vertrag"
+    )
     vertraege = provider.vertraege.select_related("verwaltung")
 
     return render(
@@ -543,12 +591,17 @@ def provider_detail(request, pk):
 
 # ---------------------------- Tarife ----------------------------
 
+
 @login_required
 def tarif_list(request):
     user = request.user
-    tarife = Tarif.objects.select_related("provider").annotate(
-        leitung_count=Count("leitungen", distinct=True),
-    ).order_by("provider__name", "name")
+    tarife = (
+        Tarif.objects.select_related("provider")
+        .annotate(
+            leitung_count=Count("leitungen", distinct=True),
+        )
+        .order_by("provider__name", "name")
+    )
 
     return render(
         request,
@@ -598,16 +651,23 @@ def tarif_update(request, pk):
 def tarif_detail(request, pk):
     user = request.user
     tarif = get_object_or_404(Tarif.objects.select_related("provider"), pk=pk)
-    leitungen = tarif.leitungen.select_related("standort", "standort__verwaltung", "vertrag")
+    leitungen = tarif.leitungen.select_related(
+        "standort", "standort__verwaltung", "vertrag"
+    )
 
     return render(
         request,
         "core/tarif_detail.html",
-        {"tarif": tarif, "leitungen": leitungen, "can_edit": is_super_or_net_admin(user)},
+        {
+            "tarif": tarif,
+            "leitungen": leitungen,
+            "can_edit": is_super_or_net_admin(user),
+        },
     )
 
 
 # ---------------------------- Standorte ----------------------------
+
 
 def _status_for(actual, required):
     """
@@ -636,14 +696,17 @@ def standort_list(request):
     )
 
     standorte = (
-        Standort.objects
-        .select_related("verwaltung")
+        Standort.objects.select_related("verwaltung")
         .prefetch_related(Prefetch("leitungen", queryset=leitungen_qs))
         .annotate(leitung_count=Count("leitungen"))
-        .order_by("standort_code")   # 🔥 HIER
+        .order_by("standort_code")  # 🔥 HIER
     )
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         standorte = standorte.filter(verwaltung=user.profile.verwaltung)
 
     search = request.GET.get("q")
@@ -661,22 +724,26 @@ def standort_list(request):
             down = getattr(l, "bandbreite_down_mbit", None)
             up = getattr(l, "bandbreite_up_mbit", None)
 
-            leitung_items.append({
-                "leitung": l,
-                "down": down,
-                "up": up,
+            leitung_items.append(
+                {
+                    "leitung": l,
+                    "down": down,
+                    "up": up,
+                    "required_down": required_down,
+                    "required_up": required_up,
+                    "status_down": _status_for(down, required_down),
+                    "status_up": _status_for(up, required_up),
+                }
+            )
+
+        rows.append(
+            {
+                "standort": s,
                 "required_down": required_down,
                 "required_up": required_up,
-                "status_down": _status_for(down, required_down),
-                "status_up": _status_for(up, required_up),
-            })
-
-        rows.append({
-            "standort": s,
-            "required_down": required_down,
-            "required_up": required_up,
-            "leitungen": leitung_items,
-        })
+                "leitungen": leitung_items,
+            }
+        )
 
     return render(
         request,
@@ -689,7 +756,6 @@ def standort_list(request):
             "mbit_per_ap_up": WAN_MBIT_PER_AP_UP,
         },
     )
-
 
 
 @login_required
@@ -731,11 +797,17 @@ def standort_detail(request, pk):
     user = request.user
     standort = get_object_or_404(Standort.objects.select_related("verwaltung"), pk=pk)
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         if standort.verwaltung_id != user.profile.verwaltung_id:
             return render(request, "core/forbidden.html", status=403)
 
-    leitungen = standort.leitungen.select_related("vertrag", "provider_ref", "tarif_ref")
+    leitungen = standort.leitungen.select_related(
+        "vertrag", "provider_ref", "tarif_ref"
+    )
 
     return render(
         request,
@@ -751,6 +823,7 @@ def standort_detail(request, pk):
 
 # ---------------------------- WAN-Leitungen ----------------------------
 
+
 @login_required
 def wanleitung_list(request):
     user = request.user
@@ -759,7 +832,11 @@ def wanleitung_list(request):
         "standort", "standort__verwaltung", "vertrag", "provider_ref", "tarif_ref"
     )
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         leitungen = leitungen.filter(standort__verwaltung=user.profile.verwaltung)
 
     return render(
@@ -813,14 +890,22 @@ def wanleitung_detail(request, pk):
     )
     user = request.user
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         if leitung.standort.verwaltung_id != user.profile.verwaltung_id:
             return render(request, "core/forbidden.html", status=403)
 
     return render(
         request,
         "core/wanleitung_detail.html",
-        {"leitung": leitung, "can_edit": is_super_or_net_admin(user), "timeline": _timeline_for_object(leitung)},
+        {
+            "leitung": leitung,
+            "can_edit": is_super_or_net_admin(user),
+            "timeline": _timeline_for_object(leitung),
+        },
     )
 
 
@@ -831,15 +916,25 @@ def wanleitung_detail(request, pk):
 def beauftragung_list(request):
     user = request.user
 
-    beauftragungen = WanBeauftragung.objects.select_related(
-        "standort",
-        "standort__verwaltung",
-        "bestehende_leitung",
-        "erstellt_von",
-    ).prefetch_related("angefragte_provider").annotate(provider_count=Count("angefragte_provider", distinct=True))
+    beauftragungen = (
+        WanBeauftragung.objects.select_related(
+            "standort",
+            "standort__verwaltung",
+            "bestehende_leitung",
+            "erstellt_von",
+        )
+        .prefetch_related("angefragte_provider")
+        .annotate(provider_count=Count("angefragte_provider", distinct=True))
+    )
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
-        beauftragungen = beauftragungen.filter(standort__verwaltung=user.profile.verwaltung)
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
+        beauftragungen = beauftragungen.filter(
+            standort__verwaltung=user.profile.verwaltung
+        )
 
     if request.method == "POST" and can_manage_beauftragung(user):
         action = request.POST.get("bulk_action")
@@ -864,7 +959,9 @@ def beauftragung_list(request):
             | Q(standort__standort_code__icontains=search)
         )
 
-    saved_filters = SavedFilter.objects.filter(user=user, target=SavedFilter.TARGET_BEAUFTRAGUNG)
+    saved_filters = SavedFilter.objects.filter(
+        user=user, target=SavedFilter.TARGET_BEAUFTRAGUNG
+    )
 
     return render(
         request,
@@ -881,7 +978,9 @@ def beauftragung_list(request):
 
 @login_required
 def provider_option_list(request):
-    optionen = ProviderZusatzoption.objects.select_related("provider").order_by("provider__name", "name")
+    optionen = ProviderZusatzoption.objects.select_related("provider").order_by(
+        "provider__name", "name"
+    )
     provider_id = request.GET.get("provider")
     if provider_id:
         optionen = optionen.filter(provider_id=provider_id)
@@ -919,7 +1018,9 @@ def provider_option_create(request):
 @login_required
 @user_passes_test(is_super_or_net_admin)
 def provider_option_update(request, pk):
-    option = get_object_or_404(ProviderZusatzoption.objects.select_related("provider"), pk=pk)
+    option = get_object_or_404(
+        ProviderZusatzoption.objects.select_related("provider"), pk=pk
+    )
 
     if request.method == "POST":
         form = ProviderZusatzoptionForm(request.POST, instance=option)
@@ -954,7 +1055,9 @@ def beauftragung_create(request):
     else:
         form = WanBeauftragungForm(user=user)
         standort_id = request.GET.get("standort")
-        standort = Standort.objects.filter(pk=standort_id).first() if standort_id else None
+        standort = (
+            Standort.objects.filter(pk=standort_id).first() if standort_id else None
+        )
         suggestions = _smart_provider_suggestions(user, standort)
         if suggestions:
             form.initial.setdefault("angefragte_provider", [p.pk for p in suggestions])
@@ -971,7 +1074,11 @@ def beauftragung_update(request, pk):
         pk=pk,
     )
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         if beauftragung.standort.verwaltung_id != user.profile.verwaltung_id:
             return render(request, "core/forbidden.html", status=403)
 
@@ -1006,17 +1113,22 @@ def beauftragung_detail(request, pk):
             "erstellt_von",
         ).prefetch_related(
             "angefragte_provider",
+            "approval_steps",
             Prefetch(
                 "provider_kontexte",
-                queryset=WanBeauftragungProviderKontext.objects.select_related("provider", "tarif").prefetch_related(
-                    "zusatzoptionen"
-                ),
+                queryset=WanBeauftragungProviderKontext.objects.select_related(
+                    "provider", "tarif"
+                ).prefetch_related("zusatzoptionen"),
             ),
         ),
         pk=pk,
     )
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         if beauftragung.standort.verwaltung_id != user.profile.verwaltung_id:
             return render(request, "core/forbidden.html", status=403)
 
@@ -1035,12 +1147,18 @@ def beauftragung_detail(request, pk):
                     f"mailto:{provider.kontakt_mail or ''}"
                     f"?subject={quote(subject)}&body={quote(body)}"
                 ),
-                "total_cost": (kontext.angebot_kosten_monat_netto or Decimal("0.00")) + (kontext.angebot_kosten_einmalig_netto or Decimal("0.00")),
+                "total_cost": (kontext.angebot_kosten_monat_netto or Decimal("0.00"))
+                + (kontext.angebot_kosten_einmalig_netto or Decimal("0.00")),
             }
         )
 
     recommended = None
-    priced = [a for a in provider_anfragen if a["kontext"].angebot_kosten_monat_netto is not None or a["kontext"].angebot_kosten_einmalig_netto is not None]
+    priced = [
+        a
+        for a in provider_anfragen
+        if a["kontext"].angebot_kosten_monat_netto is not None
+        or a["kontext"].angebot_kosten_einmalig_netto is not None
+    ]
     if priced:
         recommended = sorted(priced, key=lambda x: x["total_cost"])[0]
 
@@ -1054,8 +1172,11 @@ def beauftragung_detail(request, pk):
             "can_edit": can_manage_beauftragung(user),
             "can_approve": can_approve_beauftragung(user),
             "provider_anfragen": provider_anfragen,
-            "recommended_provider_id": recommended["provider"].id if recommended else None,
+            "recommended_provider_id": (
+                recommended["provider"].id if recommended else None
+            ),
             "timeline": timeline,
+            "approval_steps": beauftragung.approval_steps.select_related("genehmiger"),
         },
     )
 
@@ -1069,12 +1190,18 @@ def beauftragung_provider_kontext_update(request, beauftragung_pk, provider_pk):
         pk=beauftragung_pk,
     )
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         if beauftragung.standort.verwaltung_id != user.profile.verwaltung_id:
             return render(request, "core/forbidden.html", status=403)
 
     kontext = get_object_or_404(
-        WanBeauftragungProviderKontext.objects.select_related("beauftragung", "provider"),
+        WanBeauftragungProviderKontext.objects.select_related(
+            "beauftragung", "provider"
+        ),
         beauftragung_id=beauftragung_pk,
         provider_id=provider_pk,
     )
@@ -1090,7 +1217,12 @@ def beauftragung_provider_kontext_update(request, beauftragung_pk, provider_pk):
     return render(
         request,
         "core/beauftragung_provider_kontext_form.html",
-        {"form": form, "beauftragung": beauftragung, "provider": kontext.provider, "kontext": kontext},
+        {
+            "form": form,
+            "beauftragung": beauftragung,
+            "provider": kontext.provider,
+            "kontext": kontext,
+        },
     )
 
 
@@ -1113,7 +1245,9 @@ def beauftragung_provider_anfrage_sent(request, beauftragung_pk, provider_pk):
 @user_passes_test(can_approve_beauftragung)
 def beauftragung_approve(request, pk):
     beauftragung = get_object_or_404(WanBeauftragung, pk=pk)
-    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_APPROVE, beauftragung):
+    if not has_action_permission(
+        request.user, ObjektBerechtigung.ACTION_APPROVE, beauftragung
+    ):
         return render(request, "core/forbidden.html", status=403)
 
     if request.method != "POST":
@@ -1130,7 +1264,10 @@ def beauftragung_approve(request, pk):
             beauftragung.genehmigt_von = request.user
             beauftragung.genehmigt_am = timezone.now()
             beauftragung.genehmigungs_notiz = note or None
-            if beauftragung.status in {WanBeauftragung.STATUS_OFFEN, WanBeauftragung.STATUS_IN_PRUEFUNG}:
+            if beauftragung.status in {
+                WanBeauftragung.STATUS_OFFEN,
+                WanBeauftragung.STATUS_IN_PRUEFUNG,
+            }:
                 beauftragung.status = WanBeauftragung.STATUS_BEAUFTRAGT
             _send_ticket_email_for_beauftragung(beauftragung, request.user)
             beauftragung.ticket_gesendet_am = timezone.now()
@@ -1143,14 +1280,243 @@ def beauftragung_approve(request, pk):
 
 
 @login_required
+def standort_map(request):
+    standorte = Standort.objects.select_related("verwaltung").prefetch_related(
+        "leitungen", "leitungen__provider_ref"
+    )
+    if (
+        user_in_group(request.user, "IT-BEAUFTRAGTER")
+        and hasattr(request.user, "profile")
+        and request.user.profile.verwaltung_id
+    ):
+        standorte = standorte.filter(verwaltung_id=request.user.profile.verwaltung_id)
+    rows = []
+    for s in standorte:
+        active = [l for l in s.leitungen.all() if l.status == "aktiv"]
+        rows.append(
+            {
+                "standort": s,
+                "leitungen": active,
+                "provider": sorted({l.provider for l in active if l.provider}),
+                "bandbreite": sum(l.bandbreite_down_mbit or 0 for l in active),
+            }
+        )
+    return render(request, "core/standort_map.html", {"rows": rows})
+
+
+@login_required
+def contract_warnings(request):
+    today = timezone.localdate()
+    qs = Vertrag.objects.select_related("verwaltung", "provider_ref").all()
+    if (
+        user_in_group(request.user, "IT-BEAUFTRAGTER")
+        and hasattr(request.user, "profile")
+        and request.user.profile.verwaltung_id
+    ):
+        qs = qs.filter(verwaltung_id=request.user.profile.verwaltung_id)
+    warnings = []
+    for v in qs:
+        cancel_by = (
+            v.laufzeit_bis - timedelta(days=v.kuendigungsfrist_tage)
+            if v.laufzeit_bis and v.kuendigungsfrist_tage is not None
+            else None
+        )
+        severity = "ok"
+        reasons = []
+        if not v.laufzeit_bis:
+            severity = "warn"
+            reasons.append("kein Laufzeitende")
+        if v.laufzeit_bis and v.laufzeit_bis <= today + timedelta(days=180):
+            severity = (
+                "critical" if v.laufzeit_bis <= today + timedelta(days=30) else "warn"
+            )
+            reasons.append("Laufzeitende naht")
+        if cancel_by and cancel_by <= today + timedelta(days=60):
+            severity = "critical" if cancel_by <= today else "warn"
+            reasons.append("Kündigungsfrist naht/überschritten")
+        if not v.kostenstelle:
+            reasons.append("Kostenstelle fehlt")
+        if reasons:
+            warnings.append(
+                {
+                    "vertrag": v,
+                    "cancel_by": cancel_by,
+                    "severity": severity,
+                    "reasons": reasons,
+                }
+            )
+    return render(
+        request, "core/contract_warnings.html", {"warnings": warnings, "today": today}
+    )
+
+
+@login_required
+def cost_analysis(request):
+    vertraege = Vertrag.objects.select_related("verwaltung", "provider_ref")
+    if (
+        user_in_group(request.user, "IT-BEAUFTRAGTER")
+        and hasattr(request.user, "profile")
+        and request.user.profile.verwaltung_id
+    ):
+        vertraege = vertraege.filter(verwaltung_id=request.user.profile.verwaltung_id)
+    by_provider = (
+        vertraege.values("provider")
+        .annotate(
+            monat=Coalesce(Sum("kosten_monat_netto"), Value(Decimal("0.00"))),
+            einmalig=Coalesce(Sum("kosten_einmalig_netto"), Value(Decimal("0.00"))),
+            anzahl=Count("id"),
+        )
+        .order_by("-monat")
+    )
+    by_verwaltung = (
+        vertraege.values("verwaltung__name", "verwaltung__kuerzel")
+        .annotate(
+            monat=Coalesce(Sum("kosten_monat_netto"), Value(Decimal("0.00"))),
+            einmalig=Coalesce(Sum("kosten_einmalig_netto"), Value(Decimal("0.00"))),
+            anzahl=Count("id"),
+        )
+        .order_by("-monat")
+    )
+    totals = vertraege.aggregate(
+        monat=Coalesce(Sum("kosten_monat_netto"), Value(Decimal("0.00"))),
+        einmalig=Coalesce(Sum("kosten_einmalig_netto"), Value(Decimal("0.00"))),
+    )
+    return render(
+        request,
+        "core/cost_analysis.html",
+        {"by_provider": by_provider, "by_verwaltung": by_verwaltung, "totals": totals},
+    )
+
+
+@login_required
+def redundancy_check(request):
+    standorte = Standort.objects.select_related("verwaltung").prefetch_related(
+        "leitungen"
+    )
+    if (
+        user_in_group(request.user, "IT-BEAUFTRAGTER")
+        and hasattr(request.user, "profile")
+        and request.user.profile.verwaltung_id
+    ):
+        standorte = standorte.filter(verwaltung_id=request.user.profile.verwaltung_id)
+    rows = []
+    for s in standorte:
+        active = [l for l in s.leitungen.all() if l.status == "aktiv"]
+        providers = {l.provider for l in active if l.provider}
+        media = {l.medium for l in active if l.medium}
+        risks = []
+        if len(active) == 0:
+            risks.append("keine aktive Leitung")
+        if len(active) == 1:
+            risks.append("Single-Homed")
+        if active and not any(l.backup_leitung_id for l in active):
+            risks.append("keine Backup-Leitung verknüpft")
+        if len(providers) == 1 and len(active) > 1:
+            risks.append("nur ein Provider")
+        if len(media) == 1 and len(active) > 1:
+            risks.append("nur ein Medium")
+        rows.append(
+            {
+                "standort": s,
+                "active": active,
+                "providers": providers,
+                "media": media,
+                "risks": risks,
+            }
+        )
+    return render(request, "core/redundancy_check.html", {"rows": rows})
+
+
+@login_required
+def approval_step_create(request, pk):
+    beauftragung = get_object_or_404(WanBeauftragung, pk=pk)
+    if not can_approve_beauftragung(request.user):
+        return render(request, "core/forbidden.html", status=403)
+    form = BeauftragungApprovalStepForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        step = form.save(commit=False)
+        step.beauftragung = beauftragung
+        step.save()
+        messages.success(request, "Freigabestufe gespeichert.")
+        return redirect("core:beauftragung_detail", pk=pk)
+    return render(
+        request,
+        "core/approval_step_form.html",
+        {"form": form, "beauftragung": beauftragung},
+    )
+
+
+@login_required
+def self_service(request):
+    mine = (
+        WanBeauftragung.objects.filter(erstellt_von=request.user)
+        .select_related("standort")
+        .order_by("-angefragt_am")[:50]
+    )
+    return render(request, "core/self_service.html", {"beauftragungen": mine})
+
+
+@login_required
+def data_quality_center(request):
+    issues = []
+    for s in Standort.objects.filter(
+        Q(adresse_ort__isnull=True)
+        | Q(adresse_ort="")
+        | Q(adresse_strasse__isnull=True)
+        | Q(adresse_strasse="")
+    )[:200]:
+        issues.append(
+            {
+                "typ": "Standort",
+                "obj": s,
+                "problem": "Adresse unvollständig",
+                "link": f"/standorte/{s.pk}/",
+            }
+        )
+    for l in WanLeitung.objects.filter(
+        Q(vertrag__isnull=True) | Q(provider_ref__isnull=True)
+    )[:200]:
+        issues.append(
+            {
+                "typ": "Leitung",
+                "obj": l,
+                "problem": "Vertrag oder Provider-Referenz fehlt",
+                "link": f"/leitungen/{l.pk}/",
+            }
+        )
+    for v in Vertrag.objects.filter(
+        Q(laufzeit_bis__isnull=True)
+        | Q(kuendigungsfrist_tage__isnull=True)
+        | Q(kosten_monat_netto__isnull=True)
+    )[:200]:
+        issues.append(
+            {
+                "typ": "Vertrag",
+                "obj": v,
+                "problem": "Laufzeit/Kündigungsfrist/Kosten unvollständig",
+                "link": f"/vertraege/{v.pk}/",
+            }
+        )
+    return render(request, "core/data_quality_center.html", {"issues": issues})
+
+
+@login_required
 def my_tasks(request):
     user = request.user
     today = timezone.localdate()
-    my_reminders = Erinnerung.objects.filter(zugewiesen_an=user).order_by("status", "faellig_am")
-    my_beauftragungen = WanBeauftragung.objects.filter(
-        Q(erstellt_von=user) | Q(provider_kontexte__anfrage_gesendet_von=user)
-    ).distinct().order_by("-angefragt_am")
-    overdues = my_reminders.filter(status=Erinnerung.STATUS_OFFEN, faellig_am__lt=today).count()
+    my_reminders = Erinnerung.objects.filter(zugewiesen_an=user).order_by(
+        "status", "faellig_am"
+    )
+    my_beauftragungen = (
+        WanBeauftragung.objects.filter(
+            Q(erstellt_von=user) | Q(provider_kontexte__anfrage_gesendet_von=user)
+        )
+        .distinct()
+        .order_by("-angefragt_am")
+    )
+    overdues = my_reminders.filter(
+        status=Erinnerung.STATUS_OFFEN, faellig_am__lt=today
+    ).count()
 
     return render(
         request,
@@ -1226,7 +1592,11 @@ def stoerung_list(request):
         "provider",
     )
     user = request.user
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung_id
+    ):
         qs = qs.filter(wanleitung__standort__verwaltung_id=user.profile.verwaltung_id)
 
     status = request.GET.get("status")
@@ -1252,7 +1622,9 @@ def stoerung_create(request):
         form = LeitungsStoerungForm(request.POST)
         if form.is_valid():
             stoerung = form.save(commit=False)
-            if not has_action_permission(request.user, ObjektBerechtigung.ACTION_EDIT, stoerung.wanleitung):
+            if not has_action_permission(
+                request.user, ObjektBerechtigung.ACTION_EDIT, stoerung.wanleitung
+            ):
                 return render(request, "core/forbidden.html", status=403)
             stoerung.erstellt_von = request.user
             if not stoerung.provider_id and stoerung.wanleitung.provider_ref_id:
@@ -1276,7 +1648,9 @@ def stoerung_detail(request, pk):
         ),
         pk=pk,
     )
-    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_VIEW, stoerung):
+    if not has_action_permission(
+        request.user, ObjektBerechtigung.ACTION_VIEW, stoerung
+    ):
         return render(request, "core/forbidden.html", status=403)
     return render(
         request,
@@ -1289,7 +1663,9 @@ def stoerung_detail(request, pk):
 @user_passes_test(can_manage_beauftragung)
 def stoerung_update(request, pk):
     stoerung = get_object_or_404(LeitungsStoerung, pk=pk)
-    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_EDIT, stoerung):
+    if not has_action_permission(
+        request.user, ObjektBerechtigung.ACTION_EDIT, stoerung
+    ):
         return render(request, "core/forbidden.html", status=403)
 
     if request.method == "POST":
@@ -1300,7 +1676,11 @@ def stoerung_update(request, pk):
     else:
         form = LeitungsStoerungForm(instance=stoerung)
 
-    return render(request, "core/stoerung_form.html", {"form": form, "is_edit": True, "stoerung": stoerung})
+    return render(
+        request,
+        "core/stoerung_form.html",
+        {"form": form, "is_edit": True, "stoerung": stoerung},
+    )
 
 
 @login_required
@@ -1325,7 +1705,9 @@ def provider_scorecard(request):
     for p in providers_qs:
         count = int(p.bewertung_count or 0)
         avg = float(p.total_score or 0) / count if count else 0.0
-        providers.append({"provider": p, "avg_score": round(avg, 2), "bewertung_count": count})
+        providers.append(
+            {"provider": p, "avg_score": round(avg, 2), "bewertung_count": count}
+        )
     providers.sort(key=lambda x: x["avg_score"], reverse=True)
 
     return render(
@@ -1334,7 +1716,9 @@ def provider_scorecard(request):
         {
             "providers": providers,
             "form": form,
-            "bewertungen": ProviderBewertung.objects.select_related("provider", "beauftragung", "erstellt_von")[:100],
+            "bewertungen": ProviderBewertung.objects.select_related(
+                "provider", "beauftragung", "erstellt_von"
+            )[:100],
             "can_rate": can_manage_beauftragung(user),
         },
     )
@@ -1345,30 +1729,81 @@ def ops_calendar(request):
     user = request.user
     today = timezone.localdate()
 
-    erinnerungen = Erinnerung.objects.exclude(status=Erinnerung.STATUS_ERLEDIGT).select_related("vertrag", "beauftragung")
+    erinnerungen = Erinnerung.objects.exclude(
+        status=Erinnerung.STATUS_ERLEDIGT
+    ).select_related("vertrag", "beauftragung")
     vertraege = Vertrag.objects.filter(laufzeit_bis__isnull=False)
-    beauftragungen = WanBeauftragung.objects.exclude(status__in=[WanBeauftragung.STATUS_UMGESETZT, WanBeauftragung.STATUS_ABGELEHNT, WanBeauftragung.STATUS_STORNIERT])
-    stoerungen = LeitungsStoerung.objects.exclude(status=LeitungsStoerung.STATUS_BEHOBEN).select_related("wanleitung", "wanleitung__standort")
+    beauftragungen = WanBeauftragung.objects.exclude(
+        status__in=[
+            WanBeauftragung.STATUS_UMGESETZT,
+            WanBeauftragung.STATUS_ABGELEHNT,
+            WanBeauftragung.STATUS_STORNIERT,
+        ]
+    )
+    stoerungen = LeitungsStoerung.objects.exclude(
+        status=LeitungsStoerung.STATUS_BEHOBEN
+    ).select_related("wanleitung", "wanleitung__standort")
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung_id
+    ):
         verw_id = user.profile.verwaltung_id
-        erinnerungen = erinnerungen.filter(Q(vertrag__verwaltung_id=verw_id) | Q(beauftragung__standort__verwaltung_id=verw_id))
+        erinnerungen = erinnerungen.filter(
+            Q(vertrag__verwaltung_id=verw_id)
+            | Q(beauftragung__standort__verwaltung_id=verw_id)
+        )
         vertraege = vertraege.filter(verwaltung_id=verw_id)
         beauftragungen = beauftragungen.filter(standort__verwaltung_id=verw_id)
         stoerungen = stoerungen.filter(wanleitung__standort__verwaltung_id=verw_id)
 
     events = []
     for e in erinnerungen[:200]:
-        events.append({"datum": e.faellig_am, "typ": "Erinnerung", "titel": e.titel, "link": "/erinnerungen/"})
+        events.append(
+            {
+                "datum": e.faellig_am,
+                "typ": "Erinnerung",
+                "titel": e.titel,
+                "link": "/erinnerungen/",
+            }
+        )
     for v in vertraege.filter(laufzeit_bis__lte=today + timedelta(days=180))[:200]:
-        events.append({"datum": v.laufzeit_bis, "typ": "Vertrag", "titel": f"Vertrag endet: {v.vertragsnummer}", "link": f"/vertraege/{v.pk}/"})
+        events.append(
+            {
+                "datum": v.laufzeit_bis,
+                "typ": "Vertrag",
+                "titel": f"Vertrag endet: {v.vertragsnummer}",
+                "link": f"/vertraege/{v.pk}/",
+            }
+        )
     for b in beauftragungen.filter(umsetzung_bis__isnull=False)[:200]:
-        events.append({"datum": b.umsetzung_bis, "typ": "Beauftragung", "titel": b.titel, "link": f"/beauftragungen/{b.pk}/"})
+        events.append(
+            {
+                "datum": b.umsetzung_bis,
+                "typ": "Beauftragung",
+                "titel": b.titel,
+                "link": f"/beauftragungen/{b.pk}/",
+            }
+        )
     for s in stoerungen[:200]:
-        events.append({"datum": timezone.localtime(s.erwartet_behebung_bis).date() if s.erwartet_behebung_bis else today, "typ": "Störung", "titel": s.titel, "link": f"/stoerungen/{s.pk}/"})
+        events.append(
+            {
+                "datum": (
+                    timezone.localtime(s.erwartet_behebung_bis).date()
+                    if s.erwartet_behebung_bis
+                    else today
+                ),
+                "typ": "Störung",
+                "titel": s.titel,
+                "link": f"/stoerungen/{s.pk}/",
+            }
+        )
 
     events.sort(key=lambda x: x["datum"])
-    return render(request, "core/ops_calendar.html", {"events": events[:400], "today": today})
+    return render(
+        request, "core/ops_calendar.html", {"events": events[:400], "today": today}
+    )
 
 
 @login_required
@@ -1382,7 +1817,11 @@ def reports_interactive(request):
     stoerungen = LeitungsStoerung.objects.all()
     standorte = Standort.objects.prefetch_related("leitungen")
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung_id:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung_id
+    ):
         verw_id = user.profile.verwaltung_id
         vertraege = vertraege.filter(verwaltung_id=verw_id)
         beauftragungen = beauftragungen.filter(standort__verwaltung_id=verw_id)
@@ -1394,7 +1833,9 @@ def reports_interactive(request):
         .annotate(total=Coalesce(Sum("kosten_monat_netto"), Value(Decimal("0.00"))))
         .order_by("-total")[:10]
     )
-    status_data = beauftragungen.values("status").annotate(total=Count("id")).order_by("status")
+    status_data = (
+        beauftragungen.values("status").annotate(total=Count("id")).order_by("status")
+    )
 
     sla_broken = sum(1 for s in stoerungen if s.ist_sla_verletzt)
     under_supplied = 0
@@ -1402,7 +1843,9 @@ def reports_interactive(request):
         required = int((standort.arbeitsplaetze or 0) * WAN_MBIT_PER_AP_DOWN)
         if required <= 0:
             continue
-        best = max([l.bandbreite_down_mbit or 0 for l in standort.leitungen.all()] + [0])
+        best = max(
+            [l.bandbreite_down_mbit or 0 for l in standort.leitungen.all()] + [0]
+        )
         if best < required:
             under_supplied += 1
 
@@ -1420,7 +1863,9 @@ def reports_interactive(request):
             "chart_payload": json.dumps(chart_payload),
             "kpi_sla_broken": sla_broken,
             "kpi_under_supplied": under_supplied,
-            "kpi_open_stoerungen": stoerungen.exclude(status=LeitungsStoerung.STATUS_BEHOBEN).count(),
+            "kpi_open_stoerungen": stoerungen.exclude(
+                status=LeitungsStoerung.STATUS_BEHOBEN
+            ).count(),
         },
     )
 
@@ -1458,7 +1903,9 @@ def dokument_mappe_create(request, model_name, object_id):
 
 @login_required
 def dokument_mappe_detail(request, pk):
-    mappe = get_object_or_404(DokumentMappe.objects.prefetch_related("versionen"), pk=pk)
+    mappe = get_object_or_404(
+        DokumentMappe.objects.prefetch_related("versionen"), pk=pk
+    )
     if not has_action_permission(request.user, ObjektBerechtigung.ACTION_DOCS, mappe):
         return render(request, "core/forbidden.html", status=403)
 
@@ -1472,7 +1919,9 @@ def dokument_mappe_detail(request, pk):
             messages.success(request, "Dokumentversion gespeichert.")
             return redirect("core:dokument_mappe_detail", pk=pk)
     else:
-        next_version = (mappe.versionen.first().version + 1) if mappe.versionen.exists() else 1
+        next_version = (
+            (mappe.versionen.first().version + 1) if mappe.versionen.exists() else 1
+        )
         form = DokumentVersionForm(initial={"version": next_version})
 
     return render(
@@ -1518,7 +1967,11 @@ def erinnerung_list(request):
     user = request.user
     qs = Erinnerung.objects.select_related("vertrag", "beauftragung", "zugewiesen_an")
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         qs = qs.filter(
             Q(vertrag__verwaltung_id=user.profile.verwaltung_id)
             | Q(beauftragung__standort__verwaltung_id=user.profile.verwaltung_id)
@@ -1534,7 +1987,9 @@ def erinnerung_list(request):
             messages.success(request, f"{selected.count()} Erinnerungen aktualisiert.")
         elif action == "assign_me":
             selected.update(zugewiesen_an=user)
-            messages.success(request, f"{selected.count()} Erinnerungen dir zugewiesen.")
+            messages.success(
+                request, f"{selected.count()} Erinnerungen dir zugewiesen."
+            )
         elif action == "assign_user" and target_user_id:
             selected.update(zugewiesen_an_id=target_user_id)
             messages.success(request, f"{selected.count()} Erinnerungen zugewiesen.")
@@ -1554,9 +2009,13 @@ def erinnerung_list(request):
             "erinnerungen": qs.order_by("faellig_am", "id"),
             "show": show,
             "today": today,
-            "saved_filters": SavedFilter.objects.filter(user=user, target=SavedFilter.TARGET_ERINNERUNG),
+            "saved_filters": SavedFilter.objects.filter(
+                user=user, target=SavedFilter.TARGET_ERINNERUNG
+            ),
             "status_choices": Erinnerung.STATUS_CHOICES,
-            "assignable_users": User.objects.filter(is_active=True).order_by("username")[:100],
+            "assignable_users": User.objects.filter(is_active=True).order_by(
+                "username"
+            )[:100],
         },
     )
 
@@ -1566,8 +2025,14 @@ def report_vertraege_csv(request):
     user = request.user
     if not has_action_permission(user, ObjektBerechtigung.ACTION_EXPORT):
         return render(request, "core/forbidden.html", status=403)
-    vertraege = Vertrag.objects.select_related("verwaltung", "provider_ref").order_by("verwaltung__kuerzel", "provider", "vertragsnummer")
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    vertraege = Vertrag.objects.select_related("verwaltung", "provider_ref").order_by(
+        "verwaltung__kuerzel", "provider", "vertragsnummer"
+    )
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         vertraege = vertraege.filter(verwaltung_id=user.profile.verwaltung_id)
 
     response = HttpResponse(content_type="text/csv; charset=utf-8")
@@ -1606,9 +2071,17 @@ def report_beauftragungen_csv(request):
     user = request.user
     if not has_action_permission(user, ObjektBerechtigung.ACTION_EXPORT):
         return render(request, "core/forbidden.html", status=403)
-    beauftragungen = WanBeauftragung.objects.select_related("standort", "standort__verwaltung", "erstellt_von").prefetch_related("angefragte_provider")
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
-        beauftragungen = beauftragungen.filter(standort__verwaltung_id=user.profile.verwaltung_id)
+    beauftragungen = WanBeauftragung.objects.select_related(
+        "standort", "standort__verwaltung", "erstellt_von"
+    ).prefetch_related("angefragte_provider")
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
+        beauftragungen = beauftragungen.filter(
+            standort__verwaltung_id=user.profile.verwaltung_id
+        )
 
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = 'attachment; filename="report_beauftragungen.csv"'
@@ -1662,18 +2135,23 @@ def import_vertraege_csv(request):
                     if not verwaltung:
                         errors += 1
                         continue
-                    provider_ref = Provider.objects.filter(name=row.get("provider")).first()
+                    provider_ref = Provider.objects.filter(
+                        name=row.get("provider")
+                    ).first()
                     Vertrag.objects.create(
                         verwaltung=verwaltung,
                         provider_ref=provider_ref,
-                        provider=row.get("provider") or (provider_ref.kuerzel if provider_ref else "Unbekannt"),
+                        provider=row.get("provider")
+                        or (provider_ref.kuerzel if provider_ref else "Unbekannt"),
                         vertragsnummer=row.get("vertragsnummer") or "",
                         kostenstelle=row.get("kostenstelle") or None,
                     )
                     created += 1
                 except Exception:
                     errors += 1
-            messages.success(request, f"Import beendet: {created} erstellt, {errors} Fehler.")
+            messages.success(
+                request, f"Import beendet: {created} erstellt, {errors} Fehler."
+            )
             return redirect("core:vertrag_list")
     else:
         form = CsvImportForm()
@@ -1694,17 +2172,22 @@ def erinnerung_quick_done(request, pk):
 @user_passes_test(can_manage_beauftragung)
 def beauftragung_set_status(request, pk, status):
     beauftragung = get_object_or_404(WanBeauftragung, pk=pk)
-    if not has_action_permission(request.user, ObjektBerechtigung.ACTION_EDIT, beauftragung):
+    if not has_action_permission(
+        request.user, ObjektBerechtigung.ACTION_EDIT, beauftragung
+    ):
         return render(request, "core/forbidden.html", status=403)
     valid = {value for value, _label in WanBeauftragung.STATUS_CHOICES}
     if status in valid:
         beauftragung.status = status
         beauftragung.save(update_fields=["status"])
-        messages.success(request, f"Status auf {beauftragung.get_status_display()} gesetzt.")
+        messages.success(
+            request, f"Status auf {beauftragung.get_status_display()} gesetzt."
+        )
     return redirect("core:beauftragung_detail", pk=pk)
 
 
 # ---------------------------- Verträge ----------------------------
+
 
 @login_required
 def vertrag_list(request):
@@ -1712,7 +2195,11 @@ def vertrag_list(request):
 
     vertraege = Vertrag.objects.select_related("verwaltung", "provider_ref")
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         vertraege = vertraege.filter(verwaltung=user.profile.verwaltung)
 
     return render(
@@ -1761,10 +2248,16 @@ def vertrag_update(request, pk):
 
 @login_required
 def vertrag_detail(request, pk):
-    vertrag = get_object_or_404(Vertrag.objects.select_related("verwaltung", "provider_ref"), pk=pk)
+    vertrag = get_object_or_404(
+        Vertrag.objects.select_related("verwaltung", "provider_ref"), pk=pk
+    )
     user = request.user
 
-    if user_in_group(user, "IT-BEAUFTRAGTER") and hasattr(user, "profile") and user.profile.verwaltung:
+    if (
+        user_in_group(user, "IT-BEAUFTRAGTER")
+        and hasattr(user, "profile")
+        and user.profile.verwaltung
+    ):
         if vertrag.verwaltung_id != user.profile.verwaltung_id:
             return render(request, "core/forbidden.html", status=403)
 

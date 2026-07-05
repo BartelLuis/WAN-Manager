@@ -237,3 +237,35 @@ Optional: Nginx als Reverse Proxy vor Gunicorn (HTTPS, Header, Caching statische
 ```bash
 python manage.py check --deploy
 ```
+
+## Docker / GitHub Container Registry
+
+Das Repository enthält einen `Dockerfile`, der die Django-App mit Gunicorn baut und statische Dateien via WhiteNoise ausliefert.
+
+Lokales Image bauen:
+
+```bash
+docker build -t wan-manager:local .
+```
+
+Container starten (Beispiel mit externer MySQL-Datenbank):
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e DJANGO_SECRET_KEY="change-me" \
+  -e DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" \
+  -e DB_HOST="host.docker.internal" \
+  -e DB_NAME="wanportal" \
+  -e DB_USER="wanuser" \
+  -e DB_PASSWORD="geheimespasswort" \
+  wan-manager:local
+```
+
+Beim Start führt der Container standardmäßig `python manage.py migrate --noinput` aus. Das kann mit `RUN_MIGRATIONS=0` deaktiviert werden.
+
+GitHub Actions baut das Image bei Pull Requests zur Validierung. Bei Pushes auf `main` wird es zusätzlich in die GitHub Container Registry veröffentlicht:
+
+```text
+ghcr.io/<owner>/<repository>:latest
+ghcr.io/<owner>/<repository>:sha-<commit>
+```

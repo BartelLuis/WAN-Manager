@@ -4,3 +4,7 @@ mysqlclient>=2.2,<3.0
 # Optional for production WSGI runtime:
 # waitress>=3.0,<4.0   # Windows
 # gunicorn>=23.0,<24.0 # Linux
+
+# Container/production runtime:
+gunicorn>=23.0,<24.0
+whitenoise>=6.8,<7.0
