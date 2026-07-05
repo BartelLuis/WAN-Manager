@@ -1,0 +1,5 @@
+{% extends "core/base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Vertragswarnungen</h1>
+<div class="bg-white rounded shadow overflow-hidden"><table class="w-full text-sm"><tr class="bg-gray-100"><th class="text-left p-2">Vertrag</th><th>Ende</th><th>Kündigen bis</th><th>Risiken</th></tr>{% for w in warnings %}<tr class="border-t"><td class="p-2"><a class="text-blue-700" href="/vertraege/{{ w.vertrag.pk }}/">{{ w.vertrag }}</a></td><td>{{ w.vertrag.laufzeit_bis|default:"-" }}</td><td>{{ w.cancel_by|default:"-" }}</td><td>{{ w.reasons|join:", " }}</td></tr>{% empty %}<tr><td class="p-4" colspan="4">Keine Warnungen.</td></tr>{% endfor %}</table></div>
+{% endblock %}

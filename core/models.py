@@ -40,9 +40,13 @@ class Provider(models.Model):
     name = models.CharField(max_length=255)
     kuerzel = models.CharField("Kürzel", max_length=50, blank=True, null=True)
     kundennummer = models.CharField(max_length=100, blank=True, null=True)
-    kontakt_name = models.CharField("Kontakt Name", max_length=255, blank=True, null=True)
+    kontakt_name = models.CharField(
+        "Kontakt Name", max_length=255, blank=True, null=True
+    )
     kontakt_mail = models.EmailField("Kontakt E-Mail", blank=True, null=True)
-    kontakt_tel = models.CharField("Kontakt Telefon", max_length=50, blank=True, null=True)
+    kontakt_tel = models.CharField(
+        "Kontakt Telefon", max_length=50, blank=True, null=True
+    )
     anfrage_template_text = models.TextField(
         blank=True,
         null=True,
@@ -65,17 +69,33 @@ class Provider(models.Model):
 
 
 class ProviderZusatzoption(models.Model):
-    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="zusatzoptionen")
+    provider = models.ForeignKey(
+        Provider, on_delete=models.CASCADE, related_name="zusatzoptionen"
+    )
     name = models.CharField(max_length=255)
     beschreibung = models.TextField(blank=True, null=True)
-    kosten_monat_netto = models.DecimalField("Kosten p. Monat (Netto)", max_digits=10, decimal_places=2, blank=True, null=True)
-    kosten_einmalig_netto = models.DecimalField("Kosten einmalig (Netto)", max_digits=10, decimal_places=2, blank=True, null=True)
+    kosten_monat_netto = models.DecimalField(
+        "Kosten p. Monat (Netto)",
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+    )
+    kosten_einmalig_netto = models.DecimalField(
+        "Kosten einmalig (Netto)",
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+    )
     aktiv = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["provider__name", "name"]
         constraints = [
-            models.UniqueConstraint(fields=["provider", "name"], name="uniq_option_name_per_provider"),
+            models.UniqueConstraint(
+                fields=["provider", "name"], name="uniq_option_name_per_provider"
+            ),
         ]
 
     def __str__(self):
@@ -83,7 +103,9 @@ class ProviderZusatzoption(models.Model):
 
 
 class Tarif(models.Model):
-    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="tarife")
+    provider = models.ForeignKey(
+        Provider, on_delete=models.CASCADE, related_name="tarife"
+    )
     name = models.CharField(max_length=255)
     beschreibung = models.TextField(blank=True, null=True)
     bandbreite_down_mbit = models.IntegerField(blank=True, null=True)
@@ -94,7 +116,9 @@ class Tarif(models.Model):
     class Meta:
         ordering = ["provider__name", "name"]
         constraints = [
-            models.UniqueConstraint(fields=["provider", "name"], name="uniq_tarif_name_per_provider"),
+            models.UniqueConstraint(
+                fields=["provider", "name"], name="uniq_tarif_name_per_provider"
+            ),
         ]
 
     def __str__(self):
@@ -102,13 +126,17 @@ class Tarif(models.Model):
 
 
 class Standort(models.Model):
-    verwaltung = models.ForeignKey(Verwaltung, on_delete=models.CASCADE, related_name="standorte")
+    verwaltung = models.ForeignKey(
+        Verwaltung, on_delete=models.CASCADE, related_name="standorte"
+    )
     name = models.CharField(max_length=255)
     standort_code = models.CharField(max_length=50, blank=True, null=True)
     adresse_strasse = models.CharField("Straße", max_length=255, blank=True, null=True)
     adresse_plz = models.CharField("Postleitzahl", max_length=10, blank=True, null=True)
     adresse_ort = models.CharField("Ort", max_length=100, blank=True, null=True)
-    gebaeude_typ = models.CharField(max_length=50, blank=True, null=True)  # wird im Frontend nicht genutzt
+    gebaeude_typ = models.CharField(
+        max_length=50, blank=True, null=True
+    )  # wird im Frontend nicht genutzt
     arbeitsplaetze = models.PositiveIntegerField("Arbeitsplätze", default=0)  # <-- NEU
     bemerkung = models.TextField(blank=True, null=True)
     aktiv = models.BooleanField(default=True)
@@ -127,7 +155,6 @@ class Standort(models.Model):
         if self.standort_code:
             return self.standort_code
         return self.name
-
 
     def generate_standort_code(self):
         """
@@ -196,10 +223,16 @@ class Standort(models.Model):
 
 
 class Vertrag(models.Model):
-    verwaltung = models.ForeignKey(Verwaltung, on_delete=models.CASCADE, related_name="vertraege")
+    verwaltung = models.ForeignKey(
+        Verwaltung, on_delete=models.CASCADE, related_name="vertraege"
+    )
 
     provider_ref = models.ForeignKey(
-        Provider, on_delete=models.SET_NULL, blank=True, null=True, related_name="vertraege"
+        Provider,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="vertraege",
     )
     provider = models.CharField(max_length=255)
 
@@ -209,21 +242,30 @@ class Vertrag(models.Model):
     laufzeit_von = models.DateField(blank=True, null=True)
     laufzeit_bis = models.DateField(blank=True, null=True)
     kuendigungsfrist_tage = models.IntegerField(blank=True, null=True)
-    kosten_monat_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    kosten_einmalig_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    kosten_monat_netto = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
+    kosten_einmalig_netto = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
     kostenstelle = models.CharField(max_length=100, blank=True, null=True)
-    rechnungsempfaenger = models.CharField("Rechnungsempfänger", max_length=255, blank=True, null=True)
+    rechnungsempfaenger = models.CharField(
+        "Rechnungsempfänger", max_length=255, blank=True, null=True
+    )
     bemerkung_vertrag = models.TextField("Bemerkung Vertrag", blank=True, null=True)
 
     class Meta:
         ordering = ["provider", "vertragsnummer"]
         constraints = [
             models.CheckConstraint(
-                condition=Q(laufzeit_von__isnull=True) | Q(laufzeit_bis__isnull=True) | Q(laufzeit_bis__gte=models.F("laufzeit_von")),
+                condition=Q(laufzeit_von__isnull=True)
+                | Q(laufzeit_bis__isnull=True)
+                | Q(laufzeit_bis__gte=models.F("laufzeit_von")),
                 name="vertrag_laufzeit_von_bis_valid",
             ),
             models.CheckConstraint(
-                condition=Q(kuendigungsfrist_tage__isnull=True) | Q(kuendigungsfrist_tage__gte=0),
+                condition=Q(kuendigungsfrist_tage__isnull=True)
+                | Q(kuendigungsfrist_tage__gte=0),
                 name="vertrag_kuendigungsfrist_non_negative",
             ),
         ]
@@ -233,7 +275,11 @@ class Vertrag(models.Model):
 
     def clean(self):
         errors = {}
-        if self.laufzeit_von and self.laufzeit_bis and self.laufzeit_bis < self.laufzeit_von:
+        if (
+            self.laufzeit_von
+            and self.laufzeit_bis
+            and self.laufzeit_bis < self.laufzeit_von
+        ):
             errors["laufzeit_bis"] = "Laufzeit bis muss nach Laufzeit von liegen."
         if self.kuendigungsfrist_tage is not None and self.kuendigungsfrist_tage < 0:
             errors["kuendigungsfrist_tage"] = "Kündigungsfrist darf nicht negativ sein."
@@ -256,12 +302,31 @@ class WanLeitung(models.Model):
         ("cable", "Kabel"),
     ]
 
-    standort = models.ForeignKey(Standort, on_delete=models.CASCADE, related_name="leitungen")
-    vertrag = models.ForeignKey(Vertrag, on_delete=models.SET_NULL, related_name="leitungen", blank=True, null=True)
+    standort = models.ForeignKey(
+        Standort, on_delete=models.CASCADE, related_name="leitungen"
+    )
+    vertrag = models.ForeignKey(
+        Vertrag,
+        on_delete=models.SET_NULL,
+        related_name="leitungen",
+        blank=True,
+        null=True,
+    )
 
-
-    provider_ref = models.ForeignKey(Provider, on_delete=models.SET_NULL, blank=True, null=True, related_name="leitungen")
-    tarif_ref = models.ForeignKey(Tarif, on_delete=models.SET_NULL, blank=True, null=True, related_name="leitungen")
+    provider_ref = models.ForeignKey(
+        Provider,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="leitungen",
+    )
+    tarif_ref = models.ForeignKey(
+        Tarif,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="leitungen",
+    )
 
     bezeichnung = models.CharField(max_length=255, blank=True, null=True)
     provider = models.CharField(max_length=255)
@@ -271,25 +336,38 @@ class WanLeitung(models.Model):
     bandbreite_up_mbit = models.IntegerField(blank=True, null=True)
     medium = models.CharField(max_length=50, choices=MEDIUM_CHOICES)
     vlan_id = models.IntegerField("VLAN-ID", blank=True, null=True)
-    ip_adressbereich = models.CharField("IP-Adresse(n)", max_length=50, blank=True, null=True)
+    ip_adressbereich = models.CharField(
+        "IP-Adresse(n)", max_length=50, blank=True, null=True
+    )
     nat_aktiv = models.BooleanField("NAT Aktiv?", default=False)
     cpe_geraet = models.CharField("CPE Gerät", max_length=255, blank=True, null=True)
-    cpe_management_ip = models.CharField("CPE Management IP", max_length=50, blank=True, null=True)
-    backup_leitung = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True)
+    cpe_management_ip = models.CharField(
+        "CPE Management IP", max_length=50, blank=True, null=True
+    )
+    backup_leitung = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, blank=True, null=True
+    )
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default="aktiv")
-    inbetriebnahme_datum = models.DateField("Inbetriebnahme-Datum", blank=True, null=True)
-    ausserbetriebnahme_datum = models.DateField("Außerbetriebnahme-Datum", blank=True, null=True)
+    inbetriebnahme_datum = models.DateField(
+        "Inbetriebnahme-Datum", blank=True, null=True
+    )
+    ausserbetriebnahme_datum = models.DateField(
+        "Außerbetriebnahme-Datum", blank=True, null=True
+    )
     bemerkung_technik = models.TextField("Bemerkung Technik", blank=True, null=True)
 
     class Meta:
         ordering = ["standort__verwaltung__name", "standort__name", "provider"]
         constraints = [
             models.CheckConstraint(
-                condition=Q(vlan_id__isnull=True) | (Q(vlan_id__gte=1) & Q(vlan_id__lte=4094)),
+                condition=Q(vlan_id__isnull=True)
+                | (Q(vlan_id__gte=1) & Q(vlan_id__lte=4094)),
                 name="wanleitung_vlan_in_valid_range",
             ),
             models.CheckConstraint(
-                condition=Q(inbetriebnahme_datum__isnull=True) | Q(ausserbetriebnahme_datum__isnull=True) | Q(ausserbetriebnahme_datum__gte=models.F("inbetriebnahme_datum")),
+                condition=Q(inbetriebnahme_datum__isnull=True)
+                | Q(ausserbetriebnahme_datum__isnull=True)
+                | Q(ausserbetriebnahme_datum__gte=models.F("inbetriebnahme_datum")),
                 name="wanleitung_ausserbetriebnahme_after_inbetriebnahme",
             ),
         ]
@@ -307,8 +385,14 @@ class WanLeitung(models.Model):
             and self.ausserbetriebnahme_datum
             and self.ausserbetriebnahme_datum < self.inbetriebnahme_datum
         ):
-            errors["ausserbetriebnahme_datum"] = "Außerbetriebnahme darf nicht vor Inbetriebnahme liegen."
-        if self.tarif_ref_id and self.provider_ref_id and self.tarif_ref.provider_id != self.provider_ref_id:
+            errors["ausserbetriebnahme_datum"] = (
+                "Außerbetriebnahme darf nicht vor Inbetriebnahme liegen."
+            )
+        if (
+            self.tarif_ref_id
+            and self.provider_ref_id
+            and self.tarif_ref.provider_id != self.provider_ref_id
+        ):
             errors["tarif_ref"] = "Tarif und Provider passen nicht zusammen."
         if errors:
             raise ValidationError(errors)
@@ -343,7 +427,9 @@ class WanBeauftragung(models.Model):
         (PRIO_KRITISCH, "Kritisch"),
     ]
 
-    standort = models.ForeignKey(Standort, on_delete=models.CASCADE, related_name="beauftragungen")
+    standort = models.ForeignKey(
+        Standort, on_delete=models.CASCADE, related_name="beauftragungen"
+    )
     bestehende_leitung = models.ForeignKey(
         WanLeitung,
         on_delete=models.SET_NULL,
@@ -356,20 +442,34 @@ class WanBeauftragung(models.Model):
         blank=True,
         related_name="beauftragungen",
     )
-    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    erstellt_von = models.ForeignKey(
+        User, on_delete=models.SET_NULL, blank=True, null=True
+    )
 
     titel = models.CharField(max_length=255)
     ticket_nummer = models.CharField(max_length=100, blank=True, null=True)
-    prioritaet = models.CharField(max_length=20, choices=PRIORITAET_CHOICES, default=PRIO_NORMAL)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OFFEN)
+    prioritaet = models.CharField(
+        max_length=20, choices=PRIORITAET_CHOICES, default=PRIO_NORMAL
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_OFFEN
+    )
 
-    bedarf_down_mbit = models.PositiveIntegerField("Bedarf Downlink (Mbit/s)", blank=True, null=True)
-    bedarf_up_mbit = models.PositiveIntegerField("Bedarf Uplink (Mbit/s)", blank=True, null=True)
+    bedarf_down_mbit = models.PositiveIntegerField(
+        "Bedarf Downlink (Mbit/s)", blank=True, null=True
+    )
+    bedarf_up_mbit = models.PositiveIntegerField(
+        "Bedarf Uplink (Mbit/s)", blank=True, null=True
+    )
     umsetzung_bis = models.DateField(blank=True, null=True)
     angefragt_am = models.DateField(auto_now_add=True)
 
-    kostenrahmen_monat_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    kostenrahmen_einmalig_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    kostenrahmen_monat_netto = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
+    kostenrahmen_einmalig_netto = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
     genehmigt = models.BooleanField(default=False)
     genehmigt_von = models.ForeignKey(
         User,
@@ -389,7 +489,9 @@ class WanBeauftragung(models.Model):
         ordering = ["-angefragt_am", "-id"]
         constraints = [
             models.CheckConstraint(
-                condition=Q(umsetzung_bis__isnull=True) | Q(angefragt_am__isnull=True) | Q(umsetzung_bis__gte=models.F("angefragt_am")),
+                condition=Q(umsetzung_bis__isnull=True)
+                | Q(angefragt_am__isnull=True)
+                | Q(umsetzung_bis__gte=models.F("angefragt_am")),
                 name="beauftragung_umsetzung_after_anfrage",
             ),
         ]
@@ -402,7 +504,16 @@ class WanBeauftragung(models.Model):
         if self.standort_id:
             teile = [
                 (self.standort.adresse_strasse or "").strip(),
-                " ".join([p for p in [(self.standort.adresse_plz or "").strip(), (self.standort.adresse_ort or "").strip()] if p]).strip(),
+                " ".join(
+                    [
+                        p
+                        for p in [
+                            (self.standort.adresse_plz or "").strip(),
+                            (self.standort.adresse_ort or "").strip(),
+                        ]
+                        if p
+                    ]
+                ).strip(),
             ]
             adresse_komplett = ", ".join([t for t in teile if t])
 
@@ -410,18 +521,26 @@ class WanBeauftragung(models.Model):
             "anbieter_name": provider.name if provider else "",
             "anbieter_kuerzel": (provider.kuerzel or "") if provider else "",
             "standort_name": self.standort.name if self.standort_id else "",
-            "standort_code": (self.standort.standort_code or "") if self.standort_id else "",
+            "standort_code": (
+                (self.standort.standort_code or "") if self.standort_id else ""
+            ),
             "standort_adresse_komplett": adresse_komplett,
-            "verwaltung_name": self.standort.verwaltung.name if self.standort_id else "",
+            "verwaltung_name": (
+                self.standort.verwaltung.name if self.standort_id else ""
+            ),
             "titel": self.titel or "",
             "ticket_nummer": self.ticket_nummer or "",
             "bedarf_down_mbit": str(self.bedarf_down_mbit or ""),
             "bedarf_up_mbit": str(self.bedarf_up_mbit or ""),
-            "umsetzung_bis": self.umsetzung_bis.strftime("%d.%m.%Y") if self.umsetzung_bis else "",
+            "umsetzung_bis": (
+                self.umsetzung_bis.strftime("%d.%m.%Y") if self.umsetzung_bis else ""
+            ),
         }
 
     def render_anfrage_betreff(self, provider=None):
-        standort_code = (self.standort.standort_code or "").strip() if self.standort_id else ""
+        standort_code = (
+            (self.standort.standort_code or "").strip() if self.standort_id else ""
+        )
         return f"WAN-Anbindung {standort_code or '-'}"
 
     def get_anfrage_template_text(self, provider=None):
@@ -431,7 +550,11 @@ class WanBeauftragung(models.Model):
 
         if not template:
             settings_obj = GlobalSettings.objects.filter(pk=1).first()
-            template = (settings_obj.anfrage_template_text or "").strip() if settings_obj else ""
+            template = (
+                (settings_obj.anfrage_template_text or "").strip()
+                if settings_obj
+                else ""
+            )
 
         if not template:
             template = (
@@ -449,20 +572,79 @@ class WanBeauftragung(models.Model):
     def render_anfrage_text(self, provider=None):
         template = self.get_anfrage_template_text(provider)
         try:
-            return template.format_map(defaultdict(str, self._template_context(provider)))
+            return template.format_map(
+                defaultdict(str, self._template_context(provider))
+            )
         except (KeyError, ValueError):
             return template
 
 
+class BeauftragungApprovalStep(models.Model):
+    STATUS_OFFEN = "offen"
+    STATUS_FREIGEGEBEN = "freigegeben"
+    STATUS_ABGELEHNT = "abgelehnt"
+    STATUS_CHOICES = [
+        (STATUS_OFFEN, "Offen"),
+        (STATUS_FREIGEGEBEN, "Freigegeben"),
+        (STATUS_ABGELEHNT, "Abgelehnt"),
+    ]
+
+    beauftragung = models.ForeignKey(
+        WanBeauftragung, on_delete=models.CASCADE, related_name="approval_steps"
+    )
+    reihenfolge = models.PositiveSmallIntegerField(default=1)
+    rolle = models.CharField(max_length=100)
+    genehmiger = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="approval_steps",
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_OFFEN
+    )
+    notiz = models.TextField(blank=True, null=True)
+    entschieden_am = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["beauftragung", "reihenfolge", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["beauftragung", "reihenfolge"],
+                name="uniq_approval_step_order_per_beauftragung",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.beauftragung} - {self.rolle}"
+
+
 class WanBeauftragungProviderKontext(models.Model):
-    beauftragung = models.ForeignKey(WanBeauftragung, on_delete=models.CASCADE, related_name="provider_kontexte")
-    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="beauftragungs_kontexte")
-    tarif = models.ForeignKey(Tarif, on_delete=models.SET_NULL, blank=True, null=True, related_name="beauftragungs_kontexte")
-    zusatzoptionen = models.ManyToManyField(ProviderZusatzoption, blank=True, related_name="beauftragungs_kontexte")
+    beauftragung = models.ForeignKey(
+        WanBeauftragung, on_delete=models.CASCADE, related_name="provider_kontexte"
+    )
+    provider = models.ForeignKey(
+        Provider, on_delete=models.CASCADE, related_name="beauftragungs_kontexte"
+    )
+    tarif = models.ForeignKey(
+        Tarif,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="beauftragungs_kontexte",
+    )
+    zusatzoptionen = models.ManyToManyField(
+        ProviderZusatzoption, blank=True, related_name="beauftragungs_kontexte"
+    )
     template_override_text = models.TextField(blank=True, null=True)
     anfrage_notiz = models.TextField(blank=True, null=True)
-    angebot_kosten_monat_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    angebot_kosten_einmalig_netto = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    angebot_kosten_monat_netto = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
+    angebot_kosten_einmalig_netto = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
     angebot_umsetzungstage = models.PositiveIntegerField(blank=True, null=True)
     angebot_score = models.DecimalField(
         max_digits=4,
@@ -494,7 +676,9 @@ class WanBeauftragungProviderKontext(models.Model):
             template = self.beauftragung.get_anfrage_template_text(self.provider)
         context = defaultdict(str, self.beauftragung._template_context(self.provider))
         context["tarif_name"] = self.tarif.name if self.tarif_id else ""
-        context["zusatzoptionen"] = ", ".join(self.zusatzoptionen.values_list("name", flat=True))
+        context["zusatzoptionen"] = ", ".join(
+            self.zusatzoptionen.values_list("name", flat=True)
+        )
         try:
             return template.format_map(context)
         except (KeyError, ValueError):
@@ -505,7 +689,9 @@ class DokumentAnhang(models.Model):
     bezeichnung = models.CharField(max_length=255)
     datei = models.FileField(upload_to="anhaenge/%Y/%m/")
     hochgeladen_am = models.DateTimeField(auto_now_add=True)
-    hochgeladen_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    hochgeladen_von = models.ForeignKey(
+        User, on_delete=models.SET_NULL, blank=True, null=True
+    )
     bemerkung = models.TextField(blank=True, null=True)
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
@@ -530,10 +716,18 @@ class DokumentMappe(models.Model):
     ]
 
     titel = models.CharField(max_length=255)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ENTWURF)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_ENTWURF
+    )
     bemerkung = models.TextField(blank=True, null=True)
     erstellt_am = models.DateTimeField(auto_now_add=True)
-    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="dokument_mappen")
+    erstellt_von = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dokument_mappen",
+    )
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
@@ -547,18 +741,28 @@ class DokumentMappe(models.Model):
 
 
 class DokumentVersion(models.Model):
-    mappe = models.ForeignKey(DokumentMappe, on_delete=models.CASCADE, related_name="versionen")
+    mappe = models.ForeignKey(
+        DokumentMappe, on_delete=models.CASCADE, related_name="versionen"
+    )
     version = models.PositiveIntegerField()
     datei = models.FileField(upload_to="dokument_versionen/%Y/%m/")
     changelog = models.TextField(blank=True, null=True)
     freigegeben = models.BooleanField(default=False)
     hochgeladen_am = models.DateTimeField(auto_now_add=True)
-    hochgeladen_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="dokument_versionen")
+    hochgeladen_von = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="dokument_versionen",
+    )
 
     class Meta:
         ordering = ["-version", "-id"]
         constraints = [
-            models.UniqueConstraint(fields=["mappe", "version"], name="uniq_dokument_version_per_mappe"),
+            models.UniqueConstraint(
+                fields=["mappe", "version"], name="uniq_dokument_version_per_mappe"
+            ),
         ]
 
     def __str__(self):
@@ -570,7 +774,9 @@ class ObjektNotiz(models.Model):
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey("content_type", "object_id")
     text = models.TextField()
-    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    erstellt_von = models.ForeignKey(
+        User, on_delete=models.SET_NULL, blank=True, null=True
+    )
     erstellt_am = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -581,7 +787,9 @@ class ObjektNotiz(models.Model):
 
 
 class UserNotification(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="notifications"
+    )
     titel = models.CharField(max_length=255)
     nachricht = models.TextField(blank=True, null=True)
     link = models.CharField(max_length=255, blank=True, null=True)
@@ -616,23 +824,43 @@ class LeitungsStoerung(models.Model):
         (IMPACT_KRITISCH, "Kritisch"),
     ]
 
-    wanleitung = models.ForeignKey(WanLeitung, on_delete=models.CASCADE, related_name="stoerungen")
-    provider = models.ForeignKey(Provider, on_delete=models.SET_NULL, blank=True, null=True, related_name="stoerungen")
+    wanleitung = models.ForeignKey(
+        WanLeitung, on_delete=models.CASCADE, related_name="stoerungen"
+    )
+    provider = models.ForeignKey(
+        Provider,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="stoerungen",
+    )
     titel = models.CharField(max_length=255)
     beschreibung = models.TextField(blank=True, null=True)
-    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_OFFEN)
-    impact = models.CharField(max_length=20, choices=IMPACT_CHOICES, default=IMPACT_MITTEL)
+    status = models.CharField(
+        max_length=30, choices=STATUS_CHOICES, default=STATUS_OFFEN
+    )
+    impact = models.CharField(
+        max_length=20, choices=IMPACT_CHOICES, default=IMPACT_MITTEL
+    )
     ticket_nummer = models.CharField(max_length=100, blank=True, null=True)
     geoeffnet_am = models.DateTimeField(default=timezone.now)
     erwartet_behebung_bis = models.DateTimeField(blank=True, null=True)
     behoben_am = models.DateTimeField(blank=True, null=True)
-    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="stoerungen_erstellt")
+    erstellt_von = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="stoerungen_erstellt",
+    )
 
     class Meta:
         ordering = ["status", "-geoeffnet_am", "-id"]
         constraints = [
             models.CheckConstraint(
-                check=Q(behoben_am__isnull=True) | Q(geoeffnet_am__isnull=True) | Q(behoben_am__gte=models.F("geoeffnet_am")),
+                check=Q(behoben_am__isnull=True)
+                | Q(geoeffnet_am__isnull=True)
+                | Q(behoben_am__gte=models.F("geoeffnet_am")),
                 name="stoerung_behoben_after_opened",
             ),
         ]
@@ -645,14 +873,30 @@ class LeitungsStoerung(models.Model):
         if not self.erwartet_behebung_bis:
             return False
         if self.status == self.STATUS_BEHOBEN:
-            return bool(self.behoben_am and self.behoben_am > self.erwartet_behebung_bis)
+            return bool(
+                self.behoben_am and self.behoben_am > self.erwartet_behebung_bis
+            )
         return timezone.now() > self.erwartet_behebung_bis
 
 
 class ProviderBewertung(models.Model):
-    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="bewertungen")
-    beauftragung = models.ForeignKey(WanBeauftragung, on_delete=models.SET_NULL, blank=True, null=True, related_name="provider_bewertungen")
-    erstellt_von = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="provider_bewertungen")
+    provider = models.ForeignKey(
+        Provider, on_delete=models.CASCADE, related_name="bewertungen"
+    )
+    beauftragung = models.ForeignKey(
+        WanBeauftragung,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="provider_bewertungen",
+    )
+    erstellt_von = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="provider_bewertungen",
+    )
     erstellt_am = models.DateTimeField(auto_now_add=True)
 
     preis_score = models.PositiveSmallIntegerField(default=5)
@@ -671,7 +915,13 @@ class ProviderBewertung(models.Model):
 
     def clean(self):
         errors = {}
-        for field in ["preis_score", "umsetzung_score", "sla_score", "support_score", "qualitaet_score"]:
+        for field in [
+            "preis_score",
+            "umsetzung_score",
+            "sla_score",
+            "support_score",
+            "qualitaet_score",
+        ]:
             value = getattr(self, field)
             if value < 1 or value > 10:
                 errors[field] = "Wert muss zwischen 1 und 10 liegen."
@@ -704,7 +954,9 @@ class ObjektBerechtigung(models.Model):
         (ACTION_DOCS, "Dokumente verwalten"),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="objekt_berechtigungen")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="objekt_berechtigungen"
+    )
     action = models.CharField(max_length=20, choices=ACTION_CHOICES)
     erlaubt = models.BooleanField(default=True)
     erstellt_am = models.DateTimeField(auto_now_add=True)
@@ -736,7 +988,9 @@ class SavedFilter(models.Model):
         (TARGET_STANDORT, "Standorte"),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="saved_filters")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="saved_filters"
+    )
     target = models.CharField(max_length=40, choices=TARGET_CHOICES)
     name = models.CharField(max_length=80)
     querystring = models.CharField(max_length=500)
@@ -745,7 +999,9 @@ class SavedFilter(models.Model):
     class Meta:
         ordering = ["target", "name"]
         constraints = [
-            models.UniqueConstraint(fields=["user", "target", "name"], name="uniq_filter_name_per_target"),
+            models.UniqueConstraint(
+                fields=["user", "target", "name"], name="uniq_filter_name_per_target"
+            ),
         ]
 
     def __str__(self):
@@ -771,21 +1027,45 @@ class Erinnerung(models.Model):
 
     titel = models.CharField(max_length=255)
     typ = models.CharField(max_length=20, choices=TYP_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OFFEN)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_OFFEN
+    )
     faellig_am = models.DateField()
-    zugewiesen_an = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    zugewiesen_an = models.ForeignKey(
+        User, on_delete=models.SET_NULL, blank=True, null=True
+    )
     notiz = models.TextField(blank=True, null=True)
 
-    vertrag = models.ForeignKey(Vertrag, on_delete=models.CASCADE, blank=True, null=True, related_name="erinnerungen")
-    beauftragung = models.ForeignKey(WanBeauftragung, on_delete=models.CASCADE, blank=True, null=True, related_name="erinnerungen")
+    vertrag = models.ForeignKey(
+        Vertrag,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name="erinnerungen",
+    )
+    beauftragung = models.ForeignKey(
+        WanBeauftragung,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name="erinnerungen",
+    )
 
     class Meta:
         ordering = ["status", "faellig_am", "id"]
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    (Q(vertrag__isnull=False) & Q(beauftragung__isnull=True) & Q(typ="vertrag"))
-                    | (Q(vertrag__isnull=True) & Q(beauftragung__isnull=False) & Q(typ="beauftragung"))
+                    (
+                        Q(vertrag__isnull=False)
+                        & Q(beauftragung__isnull=True)
+                        & Q(typ="vertrag")
+                    )
+                    | (
+                        Q(vertrag__isnull=True)
+                        & Q(beauftragung__isnull=False)
+                        & Q(typ="beauftragung")
+                    )
                 ),
                 name="erinnerung_exactly_one_target",
             ),
@@ -814,7 +1094,13 @@ class AuditLog(models.Model):
     object_repr = models.CharField(max_length=255)
     changed_fields = models.JSONField(blank=True, null=True)
     snapshot = models.JSONField(blank=True, null=True)
-    actor = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name="audit_logs")
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="audit_logs",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -826,10 +1112,13 @@ class AuditLog(models.Model):
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    verwaltung = models.ForeignKey(Verwaltung, on_delete=models.SET_NULL, blank=True, null=True)
+    verwaltung = models.ForeignKey(
+        Verwaltung, on_delete=models.SET_NULL, blank=True, null=True
+    )
 
     def __str__(self):
         return self.user.username
+
 
 class GlobalSettings(models.Model):
     """
@@ -837,8 +1126,7 @@ class GlobalSettings(models.Model):
     """
 
     mbit_pro_arbeitsplatz = models.PositiveIntegerField(
-        default=10,
-        verbose_name="Mbit/s pro Arbeitsplatz"
+        default=10, verbose_name="Mbit/s pro Arbeitsplatz"
     )
     anfrage_template_text = models.TextField(
         blank=True,
@@ -973,7 +1261,15 @@ def _create_audit_log_on_delete(sender, instance, **kwargs):
 def _users_for_ops_notifications():
     return User.objects.filter(
         Q(is_superuser=True)
-        | Q(groups__name__in=["SUPERADMIN", "NETZADMIN", "IT-BEAUFTRAGTER", "EINKAEUFER", "EINKAUFER"])
+        | Q(
+            groups__name__in=[
+                "SUPERADMIN",
+                "NETZADMIN",
+                "IT-BEAUFTRAGTER",
+                "EINKAEUFER",
+                "EINKAUFER",
+            ]
+        )
     ).distinct()
 
 
@@ -1033,4 +1329,3 @@ def _notify_on_stoerung(sender, instance, created, **kwargs):
             nachricht=f"Leitung: {instance.wanleitung}",
             link=link,
         )
-

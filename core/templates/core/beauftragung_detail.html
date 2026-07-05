@@ -321,4 +321,18 @@
         </form>
     </div>
 </div>
+
+<div class="bg-white rounded shadow p-4 mt-4">
+    <div class="flex justify-between items-center mb-3">
+        <h2 class="text-lg font-semibold">Mehrstufige Freigabe</h2>
+        {% if can_approve %}<a class="text-blue-700" href="{% url 'core:approval_step_create' beauftragung.pk %}">Freigabestufe hinzufügen</a>{% endif %}
+    </div>
+    <ol class="list-decimal ml-5 text-sm">
+        {% for step in approval_steps %}
+            <li class="mb-2"><strong>{{ step.rolle }}</strong> · {{ step.get_status_display }} · {{ step.genehmiger|default:"kein Genehmiger" }}{% if step.notiz %}<br>{{ step.notiz }}{% endif %}</li>
+        {% empty %}
+            <li>Noch keine zusätzlichen Freigabestufen definiert.</li>
+        {% endfor %}
+    </ol>
+</div>
 {% endblock %}
