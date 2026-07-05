@@ -18,6 +18,12 @@ urlpatterns = [
     path("provider-scorecard/", views.provider_scorecard, name="provider_scorecard"),
     path("kalender/", views.ops_calendar, name="ops_calendar"),
     path("reports/interactive/", views.reports_interactive, name="reports_interactive"),
+    path("standort-map/", views.standort_map, name="standort_map"),
+    path("vertragswarnungen/", views.contract_warnings, name="contract_warnings"),
+    path("kostenanalyse/", views.cost_analysis, name="cost_analysis"),
+    path("redundanzcheck/", views.redundancy_check, name="redundancy_check"),
+    path("self-service/", views.self_service, name="self_service"),
+    path("datenqualitaet/", views.data_quality_center, name="data_quality_center"),
     path("dokumente/<str:model_name>/<int:object_id>/neu/", views.dokument_mappe_create, name="dokument_mappe_create"),
     path("dokumente/mappe/<int:pk>/", views.dokument_mappe_detail, name="dokument_mappe_detail"),
 
@@ -41,6 +47,7 @@ urlpatterns = [
     path("beauftragungen/<int:pk>/", views.beauftragung_detail, name="beauftragung_detail"),
     path("beauftragungen/<int:pk>/bearbeiten/", views.beauftragung_update, name="beauftragung_update"),
     path("beauftragungen/<int:pk>/genehmigen/", views.beauftragung_approve, name="beauftragung_approve"),
+    path("beauftragungen/<int:pk>/freigabestufen/neu/", views.approval_step_create, name="approval_step_create"),
     path("beauftragungen/<int:pk>/status/<str:status>/", views.beauftragung_set_status, name="beauftragung_set_status"),
 
     path("provider/", views.provider_list, name="provider_list"),
